@@ -37,8 +37,10 @@ Package dependencies are declared in `package.json` and are installed by UPM.
 
 1. Create an authoring graph from `Assets > Create > Dialog Node Based System > Dialog Graph`.
 2. Add a `Start` node and connect it to dialog nodes.
-3. Compile selected `.dialoggtk` assets from `Tools > Dialog System > Compile Selected Graph Toolkit Dialog Graphs`.
+3. Save the `.dialoggtk` asset. The package auto-compiles saved project graphs into sibling `*_Runtime.asset` files.
 4. Assign the generated runtime `DialogNodeGraph` asset to `DialogBehaviour.StartDialog`.
+
+You can still force a rebuild from `Tools > Dialog System > Compile Selected Graph Toolkit Dialog Graphs`.
 
 Legacy `DialogNodeGraph` assets can still be opened with `Window > Dialog Node Based Editor (Legacy)`. Use `Tools > Dialog System > Migrate Legacy Dialog Graphs` to create a migration manifest and empty Graph Toolkit authoring graph.
 

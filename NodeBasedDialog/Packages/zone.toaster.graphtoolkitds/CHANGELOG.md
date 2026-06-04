@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added editor auto-compilation for saved project `.dialoggtk` assets so runtime `*_Runtime.asset` dialog graphs stay in sync with Graph Toolkit edits.
+
 ## 1.0.0 - 2026-06-04
 
 - Converted the asset from an `Assets/Plugins` install layout to a Unity Package Manager package.
