@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using cherrydev.Editor.GraphToolkit;
 using Unity.GraphToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
+using GtkNode = Unity.GraphToolkit.Editor.Node;
 using RuntimeNode = cherrydev.Node;
 
 namespace cherrydev.Editor.Migration
@@ -64,11 +66,13 @@ namespace cherrydev.Editor.Migration
             string authoringGraphPath = AssetDatabase.GenerateUniqueAssetPath($"{directory}/{graphName}.{DialogAuthoringGraph.AssetExtension}");
             string manifestPath = AssetDatabase.GenerateUniqueAssetPath($"{directory}/{graphName}.dialogmigration.json");
 
-            GraphDatabase.CreateGraph<DialogAuthoringGraph>(authoringGraphPath);
-            ConfigureAuthoringGraph(authoringGraphPath, graph);
+            DialogAuthoringGraph authoringGraph = GraphDatabase.CreateGraph<DialogAuthoringGraph>(authoringGraphPath);
+            ConfigureAuthoringGraph(authoringGraph, graph);
 
             LegacyMigrationManifest manifest = BuildManifest(graph, legacyPath, authoringGraphPath);
-            DialogNodeGraph runtimeGraph = CreateRuntimeAssetFromLegacy(graph, manifest.targetRuntimeGraphPath, authoringGraphPath);
+            DialogNodeGraph runtimeGraph = TryPopulateAuthoringGraph(authoringGraph, graph, manifest, out string populateWarning)
+                ? CompileAuthoringGraphOrFallback(authoringGraphPath, graph, manifest, populateWarning)
+                : CreateRuntimeAssetWithWarning(graph, manifest, authoringGraphPath, populateWarning);
 
             File.WriteAllText(manifestPath, JsonUtility.ToJson(manifest, true));
             AssetDatabase.ImportAsset(manifestPath);
@@ -83,11 +87,8 @@ namespace cherrydev.Editor.Migration
             return new MigrationArtifacts(legacyPath, authoringGraphPath, runtimePath, manifestPath);
         }
 
-        private static void ConfigureAuthoringGraph(string authoringGraphPath, DialogNodeGraph legacyGraph)
+        private static void ConfigureAuthoringGraph(DialogAuthoringGraph authoringGraph, DialogNodeGraph legacyGraph)
         {
-            DialogAuthoringGraph authoringGraph = GraphDatabase.LoadGraph<DialogAuthoringGraph>(authoringGraphPath)
-                ?? GraphDatabase.LoadGraphForImporter<DialogAuthoringGraph>(authoringGraphPath);
-
             if (authoringGraph == null)
                 return;
 
@@ -98,6 +99,287 @@ namespace cherrydev.Editor.Migration
 
             GraphDatabase.SaveGraphIfDirty(authoringGraph);
         }
+
+        private static DialogNodeGraph CompileAuthoringGraphOrFallback(
+            string authoringGraphPath,
+            DialogNodeGraph legacyGraph,
+            LegacyMigrationManifest manifest,
+            string populateWarning)
+        {
+            if (!string.IsNullOrEmpty(populateWarning))
+                manifest.warnings.Add(populateWarning);
+
+            try
+            {
+                return DialogGraphCompiler.CompileToRuntimeAsset(authoringGraphPath);
+            }
+            catch (Exception exception)
+            {
+                string warning = $"Authoring graph was populated but could not be compiled: {exception.Message}. Runtime graph was cloned directly from the legacy graph.";
+                Debug.LogWarning(warning);
+                manifest.warnings.Add(warning);
+                return CreateRuntimeAssetFromLegacy(legacyGraph, manifest.targetRuntimeGraphPath, authoringGraphPath);
+            }
+        }
+
+        private static DialogNodeGraph CreateRuntimeAssetWithWarning(
+            DialogNodeGraph legacyGraph,
+            LegacyMigrationManifest manifest,
+            string authoringGraphPath,
+            string warning)
+        {
+            if (!string.IsNullOrEmpty(warning))
+            {
+                Debug.LogWarning(warning);
+                manifest.warnings.Add(warning);
+            }
+
+            return CreateRuntimeAssetFromLegacy(legacyGraph, manifest.targetRuntimeGraphPath, authoringGraphPath);
+        }
+
+        private static bool TryPopulateAuthoringGraph(
+            DialogAuthoringGraph authoringGraph,
+            DialogNodeGraph legacyGraph,
+            LegacyMigrationManifest manifest,
+            out string warning)
+        {
+            warning = string.Empty;
+
+            try
+            {
+                object graphModel = GetGraphModel(authoringGraph);
+
+                if (graphModel == null)
+                {
+                    warning = "Could not access Graph Toolkit graph model. Created runtime graph directly from legacy data.";
+                    return false;
+                }
+
+                Dictionary<RuntimeNode, AuthoringNodeBinding> nodeMap = new();
+                AuthoringNodeBinding startNode = CreateAuthoringNode(graphModel, new DialogStartNode(), new Vector2(-260f, 0f));
+                RuntimeNode entryNode = FindEntryNode(legacyGraph);
+
+                foreach (RuntimeNode legacyNode in legacyGraph.NodesList.Where(node => node != null))
+                {
+                    AuthoringNodeBinding binding = CreateAuthoringNode(graphModel, CreateAuthoringNodeInstance(legacyNode), legacyNode.Rect.position);
+                    SetAuthoringNodeOptions(binding.Node, legacyNode);
+                    RedefineNode(binding.Model);
+                    nodeMap.Add(legacyNode, binding);
+                }
+
+                if (entryNode != null && nodeMap.TryGetValue(entryNode, out AuthoringNodeBinding entryBinding))
+                    CreateWire(graphModel, startNode.Node, DialogGraphPorts.Next, entryBinding.Node, DialogGraphPorts.Input);
+
+                foreach (RuntimeNode legacyNode in legacyGraph.NodesList.Where(node => node != null))
+                    WireAuthoringNode(graphModel, legacyNode, nodeMap);
+
+                GraphDatabase.SaveGraphIfDirty(authoringGraph);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                warning = $"Could not populate Graph Toolkit authoring graph: {exception.Message}. Created runtime graph directly from legacy data.";
+                return false;
+            }
+        }
+
+        private static object GetGraphModel(DialogAuthoringGraph graph)
+        {
+            FieldInfo implementationField = typeof(Graph).GetField("m_Implementation", BindingFlags.Instance | BindingFlags.NonPublic);
+            return implementationField?.GetValue(graph);
+        }
+
+        private static AuthoringNodeBinding CreateAuthoringNode(object graphModel, GtkNode node, Vector2 position)
+        {
+            MethodInfo createNodeModel = graphModel.GetType().GetMethod("CreateNodeModel", BindingFlags.Instance | BindingFlags.Public);
+            object nodeModel = createNodeModel?.Invoke(graphModel, new object[] { node, position });
+
+            if (nodeModel == null)
+                throw new InvalidOperationException($"Could not create authoring node model for {node.GetType().Name}.");
+
+            return new AuthoringNodeBinding(node, nodeModel);
+        }
+
+        private static GtkNode CreateAuthoringNodeInstance(RuntimeNode legacyNode) => legacyNode switch
+        {
+            SentenceNode => new DialogSentenceNode(),
+            AnswerNode => new DialogAnswerNode(),
+            ExternalFunctionNode => new DialogExternalFunctionNode(),
+            ModifyVariableNode => new DialogModifyVariableNode(),
+            VariableConditionNode => new DialogVariableConditionNode(),
+            _ => throw new NotSupportedException($"Unsupported legacy dialog node type '{legacyNode.GetType().Name}'.")
+        };
+
+        private static void SetAuthoringNodeOptions(GtkNode authoringNode, RuntimeNode legacyNode)
+        {
+            switch (legacyNode)
+            {
+                case SentenceNode sentenceNode:
+                    SetOption(authoringNode, DialogGraphOptions.CharacterName, sentenceNode.Sentence.CharacterName);
+                    SetOption(authoringNode, DialogGraphOptions.SentenceText, sentenceNode.Sentence.Text);
+                    SetOption(authoringNode, DialogGraphOptions.CharacterSprite, sentenceNode.Sentence.CharacterSprite);
+                    SetOption(authoringNode, DialogGraphOptions.CharacterNameKey, sentenceNode.CharacterNameKey);
+                    SetOption(authoringNode, DialogGraphOptions.SentenceTextKey, sentenceNode.SentenceTextKey);
+                    SetOption(authoringNode, DialogGraphOptions.UseInlineExternalFunction, sentenceNode.IsExternalFunc());
+                    SetOption(authoringNode, DialogGraphOptions.InlineExternalFunctionName, sentenceNode.GetExternalFunctionName());
+                    break;
+                case AnswerNode answerNode:
+                    SetOption(authoringNode, DialogGraphOptions.AnswerCount, Mathf.Clamp(answerNode.Answers.Count, 1, DialogGraphPorts.MaxAnswerPorts));
+
+                    for (int i = 0; i < answerNode.Answers.Count && i < DialogGraphPorts.MaxAnswerPorts; i++)
+                    {
+                        SetOption(authoringNode, DialogGraphOptions.AnswerTextPrefix + i, answerNode.Answers[i]);
+                        SetOption(authoringNode, DialogGraphOptions.AnswerKeyPrefix + i, i < answerNode.AnswerKeys.Count ? answerNode.AnswerKeys[i] : string.Empty);
+                    }
+
+                    break;
+                case ExternalFunctionNode externalFunctionNode:
+                    SetOption(authoringNode, DialogGraphOptions.FunctionName, externalFunctionNode.FunctionName);
+                    SetOption(authoringNode, DialogGraphOptions.FunctionDescription, externalFunctionNode.Description);
+                    break;
+                case ModifyVariableNode modifyVariableNode:
+                    SetOption(authoringNode, DialogGraphOptions.VariableName, modifyVariableNode.VariableName);
+                    SetOption(authoringNode, DialogGraphOptions.ModificationType, modifyVariableNode.Modification);
+                    SetOption(authoringNode, DialogGraphOptions.BoolValue, modifyVariableNode.BoolValue);
+                    SetOption(authoringNode, DialogGraphOptions.IntValue, modifyVariableNode.IntValue);
+                    SetOption(authoringNode, DialogGraphOptions.FloatValue, modifyVariableNode.FloatValue);
+                    SetOption(authoringNode, DialogGraphOptions.StringValue, modifyVariableNode.StringValue);
+                    break;
+                case VariableConditionNode conditionNode:
+                    SetOption(authoringNode, DialogGraphOptions.VariableName, conditionNode.VariableName);
+                    SetOption(authoringNode, DialogGraphOptions.ConditionType, conditionNode.Condition);
+                    SetOption(authoringNode, DialogGraphOptions.BoolValue, conditionNode.BoolTargetValue);
+                    SetOption(authoringNode, DialogGraphOptions.IntValue, conditionNode.IntTargetValue);
+                    SetOption(authoringNode, DialogGraphOptions.FloatValue, conditionNode.FloatTargetValue);
+                    SetOption(authoringNode, DialogGraphOptions.StringValue, conditionNode.StringTargetValue);
+                    break;
+            }
+        }
+
+        private static void SetOption(GtkNode node, string optionName, object value)
+        {
+            INodeOption option = node.GetNodeOptionByName(optionName);
+
+            if (option == null)
+                return;
+
+            PropertyInfo portModelProperty = option.GetType().GetProperty("PortModel", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            object portModel = portModelProperty?.GetValue(option);
+            PropertyInfo embeddedValueProperty = portModel?.GetType().GetProperty("EmbeddedValue", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            object embeddedValue = embeddedValueProperty?.GetValue(portModel);
+            PropertyInfo objectValueProperty = embeddedValue?.GetType().GetProperty("ObjectValue", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+            if (objectValueProperty == null)
+                return;
+
+            objectValueProperty.SetValue(embeddedValue, value);
+        }
+
+        private static void RedefineNode(object nodeModel)
+        {
+            MethodInfo defineNode = nodeModel.GetType().GetMethod("DefineNode", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            defineNode?.Invoke(nodeModel, null);
+        }
+
+        private static void WireAuthoringNode(
+            object graphModel,
+            RuntimeNode legacyNode,
+            Dictionary<RuntimeNode, AuthoringNodeBinding> nodeMap)
+        {
+            if (!nodeMap.TryGetValue(legacyNode, out AuthoringNodeBinding source))
+                return;
+
+            switch (legacyNode)
+            {
+                case SentenceNode sentenceNode:
+                    WireAuthoringEdge(graphModel, source.Node, DialogGraphPorts.Next, sentenceNode.ChildNode, nodeMap);
+                    break;
+                case ExternalFunctionNode externalFunctionNode:
+                    WireAuthoringEdge(graphModel, source.Node, DialogGraphPorts.Next, externalFunctionNode.ChildNode, nodeMap);
+                    break;
+                case ModifyVariableNode modifyVariableNode:
+                    WireAuthoringEdge(graphModel, source.Node, DialogGraphPorts.Next, modifyVariableNode.ChildNode, nodeMap);
+                    break;
+                case VariableConditionNode conditionNode:
+                    WireAuthoringEdge(graphModel, source.Node, DialogGraphPorts.True, conditionNode.TrueChildNode, nodeMap);
+                    WireAuthoringEdge(graphModel, source.Node, DialogGraphPorts.False, conditionNode.FalseChildNode, nodeMap);
+                    break;
+                case AnswerNode answerNode:
+                    for (int i = 0; i < answerNode.ChildNodes.Count && i < DialogGraphPorts.MaxAnswerPorts; i++)
+                        WireAuthoringEdge(graphModel, source.Node, DialogGraphPorts.Answer(i), answerNode.ChildNodes[i], nodeMap);
+                    break;
+            }
+        }
+
+        private static void WireAuthoringEdge(
+            object graphModel,
+            GtkNode sourceNode,
+            string sourcePortName,
+            RuntimeNode targetLegacyNode,
+            Dictionary<RuntimeNode, AuthoringNodeBinding> nodeMap)
+        {
+            if (targetLegacyNode == null || !nodeMap.TryGetValue(targetLegacyNode, out AuthoringNodeBinding target))
+                return;
+
+            CreateWire(graphModel, sourceNode, sourcePortName, target.Node, DialogGraphPorts.Input);
+        }
+
+        private static void CreateWire(
+            object graphModel,
+            GtkNode sourceNode,
+            string sourcePortName,
+            GtkNode targetNode,
+            string targetPortName)
+        {
+            IPort outputPort = sourceNode.GetOutputPortByName(sourcePortName);
+            IPort inputPort = targetNode.GetInputPortByName(targetPortName);
+
+            if (outputPort == null || inputPort == null)
+                return;
+
+            MethodInfo createWire = graphModel.GetType()
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                .FirstOrDefault(method => method.Name == "CreateWire" && method.GetParameters().Length == 3);
+
+            if (createWire == null)
+                throw new InvalidOperationException("Graph Toolkit CreateWire method was not found.");
+
+            createWire.Invoke(graphModel, new object[] { inputPort, outputPort, new Hash128() });
+        }
+
+        private static RuntimeNode FindEntryNode(DialogNodeGraph graph)
+        {
+            if (graph.NodesList == null || graph.NodesList.Count == 0)
+                return null;
+
+            foreach (RuntimeNode node in graph.NodesList.Where(node => node != null))
+            {
+                if (!HasParents(node) && HasChildren(node))
+                    return node;
+            }
+
+            return graph.NodesList.FirstOrDefault(node => node != null);
+        }
+
+        private static bool HasParents(RuntimeNode node) => node switch
+        {
+            SentenceNode sentenceNode => sentenceNode.ParentNodes.Count > 0,
+            AnswerNode answerNode => answerNode.ParentNodes.Count > 0,
+            ExternalFunctionNode externalFunctionNode => externalFunctionNode.ParentNodes.Count > 0,
+            ModifyVariableNode modifyVariableNode => modifyVariableNode.ParentNodes.Count > 0,
+            VariableConditionNode conditionNode => conditionNode.ParentNodes.Count > 0,
+            _ => false
+        };
+
+        private static bool HasChildren(RuntimeNode node) => node switch
+        {
+            SentenceNode sentenceNode => sentenceNode.ChildNode != null,
+            AnswerNode answerNode => answerNode.ChildNodes.Any(child => child != null),
+            ExternalFunctionNode externalFunctionNode => externalFunctionNode.ChildNode != null,
+            ModifyVariableNode modifyVariableNode => modifyVariableNode.ChildNode != null,
+            VariableConditionNode conditionNode => conditionNode.TrueChildNode != null || conditionNode.FalseChildNode != null,
+            _ => false
+        };
 
         private static DialogNodeGraph CreateRuntimeAssetFromLegacy(
             DialogNodeGraph legacyGraph,
@@ -499,6 +781,18 @@ namespace cherrydev.Editor.Migration
             public string AuthoringGraphPath { get; }
             public string RuntimeGraphPath { get; }
             public string ManifestPath { get; }
+        }
+
+        private sealed class AuthoringNodeBinding
+        {
+            public AuthoringNodeBinding(GtkNode node, object model)
+            {
+                Node = node;
+                Model = model;
+            }
+
+            public GtkNode Node { get; }
+            public object Model { get; }
         }
 
         [Serializable]
