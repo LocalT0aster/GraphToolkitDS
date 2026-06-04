@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+#if UNITY_EDITOR
 using UnityEditor;
+#endif
 using UnityEngine;
 #if UNITY_LOCALIZATION
 using UnityEngine.Localization.Settings;
@@ -58,6 +60,40 @@ namespace cherrydev
 #endif
 
             return Answers[index];
+        }
+
+        public void Configure(IReadOnlyList<string> answers, IReadOnlyList<string> answerKeys = null)
+        {
+            Answers = answers == null || answers.Count == 0
+                ? new List<string> { string.Empty }
+                : new List<string>(answers);
+
+            AnswerKeys = new List<string>();
+
+            if (answerKeys != null)
+            {
+                for (int i = 0; i < answerKeys.Count && i < Answers.Count; i++)
+                    AnswerKeys.Add(answerKeys[i] ?? string.Empty);
+            }
+
+            while (AnswerKeys.Count < Answers.Count)
+                AnswerKeys.Add(string.Empty);
+
+            EnsureChildSlots(Answers.Count);
+        }
+
+        public void EnsureChildSlots(int amount)
+        {
+            if (amount < 1)
+                amount = 1;
+
+            ChildNodes ??= new List<Node>();
+
+            while (ChildNodes.Count < amount)
+                ChildNodes.Add(null);
+
+            if (ChildNodes.Count > amount)
+                ChildNodes.RemoveRange(amount, ChildNodes.Count - amount);
         }
 
 #if UNITY_EDITOR

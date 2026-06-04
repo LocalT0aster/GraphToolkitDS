@@ -19,14 +19,34 @@ namespace cherrydev
         [Space(7f)] 
         [SerializeField] private string _localizationTableName;
         [SerializeField] private string _characterNamesLocalizationName;
+        [SerializeField] private string _authoringGraphGuid;
 
         [HideInInspector] public Node NodeToDrawLineFrom;
         [HideInInspector] public Vector2 LinePosition = Vector2.zero;
 
         public string LocalizationTableName => _localizationTableName;
         public string CharacterNamesLocalizationName => _characterNamesLocalizationName;
+        public string AuthoringGraphGuid => _authoringGraphGuid;
 
         [HideInInspector] public bool IsLocalizationSetUp;
+
+        public void ConfigureRuntimeGraph(
+            List<Node> nodes,
+            VariablesConfig variablesConfig,
+            string localizationTableName,
+            string characterNamesLocalizationName,
+            string authoringGraphGuid)
+        {
+            NodesList = nodes ?? new List<Node>();
+            VariablesConfig = variablesConfig;
+            _localizationTableName = localizationTableName ?? string.Empty;
+            _characterNamesLocalizationName = characterNamesLocalizationName ?? string.Empty;
+            _authoringGraphGuid = authoringGraphGuid ?? string.Empty;
+            IsLocalizationSetUp = !string.IsNullOrEmpty(_localizationTableName);
+
+            foreach (Node node in NodesList)
+                node?.AssignNodeGraph(this);
+        }
 
 #if UNITY_EDITOR
 

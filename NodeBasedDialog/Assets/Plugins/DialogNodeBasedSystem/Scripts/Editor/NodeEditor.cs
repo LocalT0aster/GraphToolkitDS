@@ -128,11 +128,11 @@ namespace cherrydev
         /// <summary>
         /// Open Node Editor window
         /// </summary>
-        [MenuItem("Dialog Node Based Editor", menuItem = "Window/Dialog Node Based Editor")]
+        [MenuItem("Dialog Node Based Editor (Legacy)", menuItem = "Window/Dialog Node Based Editor (Legacy)")]
         public static void OpenWindow()
         {
             NodeEditor window = (NodeEditor)GetWindow(typeof(NodeEditor));
-            window.titleContent = new GUIContent("Dialog Graph Editor");
+            window.titleContent = new GUIContent("Legacy Dialog Graph Editor");
             window.Show();
         }
 

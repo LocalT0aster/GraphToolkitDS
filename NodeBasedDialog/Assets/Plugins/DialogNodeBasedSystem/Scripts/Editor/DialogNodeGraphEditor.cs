@@ -12,7 +12,7 @@ namespace cherrydev
 
             DialogNodeGraph nodeGraph = (DialogNodeGraph)target;
 
-            if (GUILayout.Button("Open Editor Window"))
+            if (GUILayout.Button("Open Legacy Editor Window"))
             {
                 NodeEditor.SetCurrentNodeGraph(nodeGraph);
                 NodeEditor.OpenWindow();

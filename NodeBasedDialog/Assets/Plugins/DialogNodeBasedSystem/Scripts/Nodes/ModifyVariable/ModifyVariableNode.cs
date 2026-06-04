@@ -13,7 +13,7 @@ namespace cherrydev
     {
         [SerializeField] private string _variableName = "";
         [SerializeField] private ModificationType _modifyType = ModificationType.Set;
-        
+
         [SerializeField] private bool _boolValue;
         [SerializeField] private int _intValue;
         [SerializeField] private float _floatValue;
@@ -25,6 +25,26 @@ namespace cherrydev
 
         public string VariableName => _variableName;
         public ModificationType Modification => _modifyType;
+        public bool BoolValue => _boolValue;
+        public int IntValue => _intValue;
+        public float FloatValue => _floatValue;
+        public string StringValue => _stringValue;
+
+        public void Configure(
+            string variableName,
+            ModificationType modificationType,
+            bool boolValue,
+            int intValue,
+            float floatValue,
+            string stringValue)
+        {
+            _variableName = variableName ?? string.Empty;
+            _modifyType = modificationType;
+            _boolValue = boolValue;
+            _intValue = intValue;
+            _floatValue = floatValue;
+            _stringValue = stringValue ?? string.Empty;
+        }
 
         /// <summary>
         /// Execute the variable modification
@@ -126,14 +146,14 @@ namespace cherrydev
 
         private string GetCurrentModifyValueAsString()
         {
-            if (NodeGraph?.VariablesConfig == null) 
+            if (NodeGraph?.VariablesConfig == null)
                 return "null";
-            
+
             Variable variable = NodeGraph.VariablesConfig.GetVariable(_variableName);
-            
-            if (variable == null) 
+
+            if (variable == null)
                 return "null";
-            
+
             return variable.Type switch
             {
                 VariableType.Bool => _boolValue.ToString(),
@@ -158,20 +178,20 @@ namespace cherrydev
             // Clean up null parent references
             ParentNodes.RemoveAll(item => item == null);
 
-            float currentHeight = _modifyType == ModificationType.Toggle 
-                ? ToggleModificationHeight 
+            float currentHeight = _modifyType == ModificationType.Toggle
+                ? ToggleModificationHeight
                 : NodeHeight;
-            
+
             Rect.size = new Vector2(NodeWidth, currentHeight);
 
             GUILayout.BeginArea(Rect, nodeStyle);
-            
+
             EditorGUILayout.LabelField("Modify Variable", labelStyle);
             EditorGUILayout.Space(3);
-            
+
             if (NodeGraph != null)
                 NodeGraph.EnsureVariablesConfig();
-            
+
             DrawVariableSelection();
             DrawModifyTypeSelection();
             DrawValueField();
@@ -193,28 +213,28 @@ namespace cherrydev
         {
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Variable:", GUILayout.Width(LabelWidth));
-            
+
             if (NodeGraph?.VariablesConfig != null && NodeGraph.VariablesConfig.Variables.Count > 0)
             {
                 string[] variableNames = NodeGraph.VariablesConfig.Variables
                     .Where(v => v != null)
                     .Select(v => v.Name)
                     .ToArray();
-                
+
                 int currentIndex = System.Array.IndexOf(variableNames, _variableName);
-                
-                if (currentIndex == -1) 
+
+                if (currentIndex == -1)
                     currentIndex = 0;
-                
+
                 int newIndex = EditorGUILayout.Popup(currentIndex, variableNames, GUILayout.Width(FieldWidth));
-                
+
                 if (newIndex >= 0 && newIndex < variableNames.Length)
                     _variableName = variableNames[newIndex];
             }
             else
             {
                 _variableName = EditorGUILayout.TextField(_variableName, GUILayout.Width(FieldWidth));
-                
+
                 if (NodeGraph?.VariablesConfig != null && NodeGraph.VariablesConfig.Variables.Count == 0)
                 {
                     EditorGUILayout.EndHorizontal();
@@ -222,7 +242,7 @@ namespace cherrydev
                     return;
                 }
             }
-            
+
             EditorGUILayout.EndHorizontal();
         }
 
@@ -231,36 +251,36 @@ namespace cherrydev
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Action:", GUILayout.Width(LabelWidth));
             Variable selectedVariable = NodeGraph?.VariablesConfig?.GetVariable(_variableName);
-            
+
             if (selectedVariable != null)
             {
                 ModificationType[] availableTypes = GetAvailableModifyTypes(selectedVariable.Type);
                 string[] typeNames = availableTypes.Select(t => GetModifyTypeDisplayName(t, selectedVariable.Type)).ToArray();
                 int currentIndex = System.Array.IndexOf(availableTypes, _modifyType);
-                
-                if (currentIndex == -1) 
+
+                if (currentIndex == -1)
                     currentIndex = 0;
-                
+
                 int newIndex = EditorGUILayout.Popup(currentIndex, typeNames, GUILayout.Width(FieldWidth));
-                
+
                 if (newIndex >= 0 && newIndex < availableTypes.Length)
                     _modifyType = availableTypes[newIndex];
             }
             else
                 _modifyType = (ModificationType)EditorGUILayout.EnumPopup(_modifyType, GUILayout.Width(FieldWidth));
-            
+
             EditorGUILayout.EndHorizontal();
         }
 
         private void DrawValueField()
         {
             Variable selectedVariable = NodeGraph?.VariablesConfig?.GetVariable(_variableName);
-            
+
             if (selectedVariable == null || _modifyType == ModificationType.Toggle)
                 return;
-            
+
             EditorGUILayout.BeginHorizontal();
-            
+
             string label = _modifyType switch
             {
                 ModificationType.Set => "Set to:",
@@ -268,9 +288,9 @@ namespace cherrydev
                 ModificationType.Decrease => selectedVariable.Type == VariableType.String ? "Remove:" : "Subtract:",
                 _ => "Value:"
             };
-            
+
             EditorGUILayout.LabelField(label, GUILayout.Width(LabelWidth));
-            
+
             switch (selectedVariable.Type)
             {
                 case VariableType.Bool:
@@ -286,7 +306,7 @@ namespace cherrydev
                     _stringValue = EditorGUILayout.TextField(_stringValue, GUILayout.Width(FieldWidth));
                     break;
             }
-            
+
             EditorGUILayout.EndHorizontal();
         }
 
@@ -294,15 +314,15 @@ namespace cherrydev
         {
             if (string.IsNullOrEmpty(_variableName))
                 return;
-                
+
             Variable selectedVariable = NodeGraph?.VariablesConfig?.GetVariable(_variableName);
-            
+
             if (selectedVariable == null)
             {
                 EditorGUILayout.HelpBox($"Variable '{_variableName}' not found", MessageType.Warning);
                 return;
             }
-            
+
             string previewText = GetPreviewText(selectedVariable);
             EditorGUILayout.LabelField(previewText, EditorStyles.helpBox);
         }
@@ -312,16 +332,16 @@ namespace cherrydev
             string action = _modifyType switch
             {
                 ModificationType.Set => $"Set {variable.Name} = {GetCurrentModifyValueAsString()}",
-                ModificationType.Increase => variable.Type == VariableType.String 
+                ModificationType.Increase => variable.Type == VariableType.String
                     ? $"Append {GetCurrentModifyValueAsString()} to {variable.Name}"
                     : $"Add {GetCurrentModifyValueAsString()} to {variable.Name}",
-                ModificationType.Decrease => variable.Type == VariableType.String 
+                ModificationType.Decrease => variable.Type == VariableType.String
                     ? $"Remove {GetCurrentModifyValueAsString()} from {variable.Name}"
                     : $"Subtract {GetCurrentModifyValueAsString()} from {variable.Name}",
                 ModificationType.Toggle => $"Toggle {variable.Name}",
                 _ => $"Modify {variable.Name}"
             };
-            
+
             string persistentInfo = variable.SaveToPrefs ? " (Saved)" : "";
             return action + persistentInfo;
         }
@@ -358,22 +378,22 @@ namespace cherrydev
                 ChildNode.RemoveFromParentConnectedNode(this);
 
             ChildNode = nodeToAdd;
-    
+
             return true;
         }
 
         public override bool AddToParentConnectedNode(Node nodeToAdd)
         {
-            if (nodeToAdd == this) 
+            if (nodeToAdd == this)
                 return false;
-            
+
             if (ParentNodes.Contains(nodeToAdd))
                 return false;
-            
+
             ParentNodes.Add(nodeToAdd);
             return true;
         }
-        
+
         public override bool RemoveFromParentConnectedNode(Node nodeToRemove) => ParentNodes.Remove(nodeToRemove);
 #endif
     }

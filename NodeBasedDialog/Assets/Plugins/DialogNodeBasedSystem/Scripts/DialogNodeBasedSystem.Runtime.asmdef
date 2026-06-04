@@ -1,0 +1,19 @@
+{
+  "name": "DialogNodeBasedSystem.Runtime",
+  "rootNamespace": "cherrydev",
+  "references": [
+    "Unity.TextMeshPro",
+    "Unity.Timeline",
+    "UnityEngine.UI",
+    "Unity.Localization"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

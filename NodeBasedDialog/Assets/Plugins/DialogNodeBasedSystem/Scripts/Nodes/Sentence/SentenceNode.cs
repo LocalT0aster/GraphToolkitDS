@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+#if UNITY_EDITOR
 using UnityEditor;
+#endif
 using UnityEngine;
 #if UNITY_LOCALIZATION
 using UnityEngine.Localization.Settings;
@@ -25,6 +27,7 @@ namespace cherrydev
         [HideInInspector] public string SentenceTextKey;
 
         public Sentence Sentence => _sentence;
+        public string ExternalFunctionName => _externalFunctionName;
 
         private string _externalButtonLabel;
 
@@ -112,6 +115,20 @@ namespace cherrydev
         /// </summary>
         /// <returns></returns>
         public bool IsExternalFunc() => _isExternalFunc;
+
+        public void Configure(
+            Sentence sentence,
+            bool isExternalFunction,
+            string externalFunctionName,
+            string characterNameKey,
+            string sentenceTextKey)
+        {
+            _sentence = sentence;
+            _isExternalFunc = isExternalFunction;
+            _externalFunctionName = externalFunctionName ?? string.Empty;
+            CharacterNameKey = characterNameKey ?? string.Empty;
+            SentenceTextKey = sentenceTextKey ?? string.Empty;
+        }
 
 #if UNITY_EDITOR
 

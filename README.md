@@ -26,12 +26,25 @@ You can check the video tutorial on YouTube:
 
 ## 1️⃣ Node Editor
 
+### Unity 6.3 Graph Toolkit Workflow
+
+This project now targets **Unity 6000.3.16f1 LTS** and uses Unity's experimental **Graph Toolkit** package for modern dialog graph authoring.
+
+1. Create a new authoring graph from **Assets > Create > Dialog Node Based System > Dialog Graph**.
+2. Add one optional **Graph Settings** node for `VariablesConfig` and localization table names.
+3. Add a single **Start** node and connect it to the first dialog node.
+4. Use **Sentence**, **Answer**, **External Function**, **Modify Variable**, and **Variable Condition** nodes for the dialog flow.
+5. Select the `.dialoggtk` asset and run **Tools > Dialog System > Compile Selected Graph Toolkit Dialog Graphs**.
+6. Assign the generated `*_Runtime.asset` to existing `DialogBehaviour.StartDialog(DialogNodeGraph)` workflows.
+
+Legacy `.asset` graphs are still readable through **Window > Dialog Node Based Editor (Legacy)**. To migrate one, select the old `DialogNodeGraph` asset and run **Tools > Dialog System > Migrate Legacy Dialog Graphs**. Unity 6000.3 does not expose public Graph Toolkit APIs for fully automated node and wire creation, so the migration command creates an empty `.dialoggtk` graph plus a JSON manifest that lists the old nodes, data, positions, and port mappings for manual rebuild.
+
 ### STEP 1: How to Open Node Editor Window
 
 1. Right-click in the **Assets** folder.
 2. Navigate to **Create > ScriptableObjects > Node Graph > Node Graph**.
-3. Double-click your new **DialogNodeGraph** asset to open the editor.
-4. Alternatively, go to **Window > DialogNodeBasedEditor**, but you still need to create and select a **NodeGraph** ScriptableObject.
+3. Double-click your new **DialogNodeGraph** asset to open the legacy editor.
+4. Alternatively, go to **Window > Dialog Node Based Editor (Legacy)**, but you still need to create and select a **NodeGraph** ScriptableObject.
 
 ### STEP 2: Orientation
 

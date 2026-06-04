@@ -12,7 +12,7 @@ namespace cherrydev
     {
         [SerializeField] private string _variableName = "";
         [SerializeField] private ConditionType _conditionType = ConditionType.Equal;
-        
+
         [SerializeField] private bool _boolTargetValue;
         [SerializeField] private int _intTargetValue;
         [SerializeField] private float _floatTargetValue;
@@ -25,6 +25,26 @@ namespace cherrydev
 
         public string VariableName => _variableName;
         public ConditionType Condition => _conditionType;
+        public bool BoolTargetValue => _boolTargetValue;
+        public int IntTargetValue => _intTargetValue;
+        public float FloatTargetValue => _floatTargetValue;
+        public string StringTargetValue => _stringTargetValue;
+
+        public void Configure(
+            string variableName,
+            ConditionType conditionType,
+            bool boolTargetValue,
+            int intTargetValue,
+            float floatTargetValue,
+            string stringTargetValue)
+        {
+            _variableName = variableName ?? string.Empty;
+            _conditionType = conditionType;
+            _boolTargetValue = boolTargetValue;
+            _intTargetValue = intTargetValue;
+            _floatTargetValue = floatTargetValue;
+            _stringTargetValue = stringTargetValue ?? string.Empty;
+        }
 
         /// <summary>
         /// Evaluate the condition using the variables handler
@@ -61,16 +81,16 @@ namespace cherrydev
             {
                 case VariableType.Bool:
                     return EvaluateBoolCondition(variable.GetBoolValue());
-                    
+
                 case VariableType.Int:
                     return EvaluateIntCondition(variable.GetIntValue());
-                    
+
                 case VariableType.Float:
                     return EvaluateFloatCondition(variable.GetFloatValue());
-                    
+
                 case VariableType.String:
                     return EvaluateStringCondition(variable.GetStringValue());
-                    
+
                 default:
                     Debug.LogWarning($"Unsupported variable type: {variable.Type}");
                     return false;
@@ -180,17 +200,17 @@ namespace cherrydev
             Rect.size = new Vector2(NodeWidth, NodeHeight);
 
             GUILayout.BeginArea(Rect, nodeStyle);
-            
+
             EditorGUILayout.LabelField("Variable Condition", labelStyle);
             EditorGUILayout.Space(3);
-            
+
             if (NodeGraph != null)
                 NodeGraph.EnsureVariablesConfig();
-            
+
             DrawVariableSelection();
             DrawConditionSelection();
             DrawTargetValueField();
-            
+
             EditorGUILayout.Space(3);
             DrawConditionPreview();
 
@@ -211,28 +231,28 @@ namespace cherrydev
         {
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Variable:", GUILayout.Width(LabelWidth));
-            
+
             if (NodeGraph?.VariablesConfig != null && NodeGraph.VariablesConfig.Variables.Count > 0)
             {
                 string[] variableNames = NodeGraph.VariablesConfig.Variables
                     .Where(v => v != null)
                     .Select(v => v.Name)
                     .ToArray();
-                
+
                 int currentIndex = System.Array.IndexOf(variableNames, _variableName);
-                
-                if (currentIndex == -1) 
+
+                if (currentIndex == -1)
                     currentIndex = 0;
-                
+
                 int newIndex = EditorGUILayout.Popup(currentIndex, variableNames, GUILayout.Width(FieldWidth + 20));
-                
+
                 if (newIndex >= 0 && newIndex < variableNames.Length)
                     _variableName = variableNames[newIndex];
             }
             else
             {
                 _variableName = EditorGUILayout.TextField(_variableName, GUILayout.Width(FieldWidth + 20));
-                
+
                 if (NodeGraph?.VariablesConfig != null && NodeGraph.VariablesConfig.Variables.Count == 0)
                 {
                     EditorGUILayout.EndHorizontal();
@@ -240,7 +260,7 @@ namespace cherrydev
                     return;
                 }
             }
-            
+
             EditorGUILayout.EndHorizontal();
         }
 
@@ -248,17 +268,17 @@ namespace cherrydev
         {
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Condition:", GUILayout.Width(LabelWidth));
-            
+
             Variable selectedVariable = NodeGraph?.VariablesConfig?.GetVariable(_variableName);
-            
+
             if (selectedVariable != null)
             {
                 ConditionType[] availableConditions = GetAvailableConditions(selectedVariable.Type);
                 string[] conditionNames = availableConditions.Select(GetConditionDisplayName).ToArray();
-                
+
                 int currentIndex = System.Array.IndexOf(availableConditions, _conditionType);
                 if (currentIndex == -1) currentIndex = 0;
-                
+
                 int newIndex = EditorGUILayout.Popup(currentIndex, conditionNames, GUILayout.Width(FieldWidth + 20));
                 if (newIndex >= 0 && newIndex < availableConditions.Length)
                 {
@@ -267,7 +287,7 @@ namespace cherrydev
             }
             else
                 _conditionType = (ConditionType)EditorGUILayout.EnumPopup(_conditionType, GUILayout.Width(FieldWidth + 20));
-            
+
             EditorGUILayout.EndHorizontal();
         }
 
@@ -276,10 +296,10 @@ namespace cherrydev
             Variable selectedVariable = NodeGraph?.VariablesConfig?.GetVariable(_variableName);
             if (selectedVariable == null)
                 return;
-            
+
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Target Value:", GUILayout.Width(LabelWidth));
-            
+
             switch (selectedVariable.Type)
             {
                 case VariableType.Bool:
@@ -295,7 +315,7 @@ namespace cherrydev
                     _stringTargetValue = EditorGUILayout.TextField(_stringTargetValue, GUILayout.Width(FieldWidth + 20));
                     break;
             }
-            
+
             EditorGUILayout.EndHorizontal();
         }
 
@@ -331,7 +351,7 @@ namespace cherrydev
 
         public override bool AddToChildConnectedNode(Node nodeToAdd)
         {
-            if (nodeToAdd == this) 
+            if (nodeToAdd == this)
                 return false;
 
             if (TrueChildNode == null)
@@ -351,12 +371,12 @@ namespace cherrydev
 
         public override bool AddToParentConnectedNode(Node nodeToAdd)
         {
-            if (nodeToAdd == this) 
+            if (nodeToAdd == this)
                 return false;
-            
+
             if (ParentNodes.Contains(nodeToAdd))
                 return false;
-            
+
             ParentNodes.Add(nodeToAdd);
             return true;
         }

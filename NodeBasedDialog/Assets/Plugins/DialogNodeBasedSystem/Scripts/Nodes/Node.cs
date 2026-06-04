@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+#if UNITY_EDITOR
 using UnityEditor;
+#endif
 using UnityEngine;
 
 namespace cherrydev
@@ -13,6 +15,8 @@ namespace cherrydev
         [HideInInspector] public bool IsSelected;
 
         protected float StandardHeight;
+
+        public void AssignNodeGraph(DialogNodeGraph nodeGraph) => NodeGraph = nodeGraph;
 
         /// <summary>
         /// Gets the table name from the node graph asset name
