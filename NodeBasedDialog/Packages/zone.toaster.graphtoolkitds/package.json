@@ -1,0 +1,33 @@
+{
+  "name": "zone.toaster.graphtoolkitds",
+  "version": "1.0.0",
+  "displayName": "GraphToolkitDS",
+  "description": "Graph Toolkit-based dialog authoring and runtime system for Unity.",
+  "unity": "6000.3",
+  "author": {
+    "name": "Oleg Vishnivetsky / LocalT0aster",
+    "url": "https://github.com/LocalT0aster/GraphToolkitDS"
+  },
+  "license": "MIT",
+  "keywords": [
+    "dialog",
+    "graph",
+    "graph-toolkit",
+    "localization",
+    "timeline"
+  ],
+  "dependencies": {
+    "com.unity.graphtoolkit": "0.4.0-exp.2",
+    "com.unity.localization": "1.5.4",
+    "com.unity.textmeshpro": "3.0.9",
+    "com.unity.timeline": "1.7.7",
+    "com.unity.ugui": "1.0.0"
+  },
+  "samples": [
+    {
+      "displayName": "Demo",
+      "description": "Demo scene, dialog graph, localization setup, and starter scripts.",
+      "path": "Samples~/Demo"
+    }
+  ]
+}

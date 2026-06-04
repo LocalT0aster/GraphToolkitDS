@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 #if UNITY_EDITOR
+using System;
+using System.IO;
 using UnityEditor;
 #endif
 using UnityEngine;
@@ -67,7 +69,7 @@ namespace cherrydev
             if (VariablesConfig == null)
             {
                 string graphPath = AssetDatabase.GetAssetPath(this);
-                string directory = System.IO.Path.GetDirectoryName(graphPath);
+                string directory = GetWritableAssetDirectory(graphPath, "Variables");
         
                 VariablesConfig = CreateInstance<VariablesConfig>();
                 VariablesConfig.name = $"{name}_Variables";
@@ -83,6 +85,43 @@ namespace cherrydev
                 AssetDatabase.SaveAssets();
 
                 Debug.Log($"Created VariablesConfig at {configPath}");
+            }
+        }
+
+        private static string GetWritableAssetDirectory(string assetPath, string fallbackSubdirectory)
+        {
+            if (!string.IsNullOrEmpty(assetPath) && assetPath.StartsWith("Assets/", StringComparison.Ordinal))
+            {
+                string assetDirectory = Path.GetDirectoryName(assetPath)?.Replace("\\", "/");
+
+                if (!string.IsNullOrEmpty(assetDirectory))
+                {
+                    EnsureAssetDirectory(assetDirectory);
+                    return assetDirectory;
+                }
+            }
+
+            string fallbackDirectory = $"Assets/DialogNodeBasedSystem/{fallbackSubdirectory}";
+            EnsureAssetDirectory(fallbackDirectory);
+            return fallbackDirectory;
+        }
+
+        private static void EnsureAssetDirectory(string assetDirectory)
+        {
+            if (string.IsNullOrEmpty(assetDirectory) || AssetDatabase.IsValidFolder(assetDirectory))
+                return;
+
+            string[] parts = assetDirectory.Split('/');
+            string current = parts[0];
+
+            for (int i = 1; i < parts.Length; i++)
+            {
+                string next = $"{current}/{parts[i]}";
+
+                if (!AssetDatabase.IsValidFolder(next))
+                    AssetDatabase.CreateFolder(current, parts[i]);
+
+                current = next;
             }
         }
 

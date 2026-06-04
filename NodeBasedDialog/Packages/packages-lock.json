@@ -2,7 +2,7 @@
   "dependencies": {
     "com.unity.addressables": {
       "version": "1.22.3",
-      "depth": 1,
+      "depth": 2,
       "source": "registry",
       "dependencies": {
         "com.unity.modules.assetbundle": "1.0.0",
@@ -36,6 +36,15 @@
       "dependencies": {},
       "url": "https://packages.unity.com"
     },
+    "com.unity.graphtoolkit": {
+      "version": "0.4.0-exp.2",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.modules.uielements": "1.0.0"
+      },
+      "url": "https://packages.unity.com"
+    },
     "com.unity.ide.rider": {
       "version": "3.0.36",
       "depth": 0,
@@ -56,7 +65,7 @@
     },
     "com.unity.localization": {
       "version": "1.5.4",
-      "depth": 0,
+      "depth": 1,
       "source": "registry",
       "dependencies": {
         "com.unity.addressables": "1.22.2",
@@ -66,14 +75,14 @@
     },
     "com.unity.nuget.newtonsoft-json": {
       "version": "3.2.1",
-      "depth": 1,
+      "depth": 2,
       "source": "registry",
       "dependencies": {},
       "url": "https://packages.unity.com"
     },
     "com.unity.scriptablebuildpipeline": {
       "version": "1.21.25",
-      "depth": 2,
+      "depth": 3,
       "source": "registry",
       "dependencies": {},
       "url": "https://packages.unity.com"
@@ -91,7 +100,7 @@
     },
     "com.unity.textmeshpro": {
       "version": "3.0.9",
-      "depth": 0,
+      "depth": 1,
       "source": "registry",
       "dependencies": {
         "com.unity.ugui": "1.0.0"
@@ -100,7 +109,7 @@
     },
     "com.unity.timeline": {
       "version": "1.7.7",
-      "depth": 0,
+      "depth": 1,
       "source": "registry",
       "dependencies": {
         "com.unity.modules.audio": "1.0.0",
@@ -112,7 +121,7 @@
     },
     "com.unity.ugui": {
       "version": "1.0.0",
-      "depth": 0,
+      "depth": 1,
       "source": "builtin",
       "dependencies": {
         "com.unity.modules.ui": "1.0.0",
@@ -360,6 +369,18 @@
         "com.unity.modules.physics": "1.0.0",
         "com.unity.modules.jsonserialize": "1.0.0",
         "com.unity.modules.subsystems": "1.0.0"
+      }
+    },
+    "zone.toaster.graphtoolkitds": {
+      "version": "file:zone.toaster.graphtoolkitds",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.unity.graphtoolkit": "0.4.0-exp.2",
+        "com.unity.localization": "1.5.4",
+        "com.unity.textmeshpro": "3.0.9",
+        "com.unity.timeline": "1.7.7",
+        "com.unity.ugui": "1.0.0"
       }
     }
   }

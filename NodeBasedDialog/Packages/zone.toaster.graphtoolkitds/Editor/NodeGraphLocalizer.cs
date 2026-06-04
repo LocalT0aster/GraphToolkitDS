@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using UnityEditor;
 using UnityEditor.PackageManager;
 using UnityEditor.PackageManager.Requests;
@@ -68,8 +69,9 @@ namespace cherrydev
                     return;
                 }
 
-                table = LocalizationEditorSettings.CreateStringTableCollection(dialogGraph.name,
-                    $"Assets/Localization/{dialogGraph.name}");
+                table = LocalizationEditorSettings.CreateStringTableCollection(
+                    dialogGraph.name,
+                    GetLocalizationCollectionDirectory(dialogGraph));
                 
                 if (table == null)
                 {
@@ -134,6 +136,51 @@ namespace cherrydev
         }
 
 #if UNITY_LOCALIZATION
+        private static string GetLocalizationCollectionDirectory(DialogNodeGraph dialogGraph)
+        {
+            string graphPath = AssetDatabase.GetAssetPath(dialogGraph);
+            string baseDirectory = GetWritableAssetDirectory(graphPath, "Localization");
+            return $"{baseDirectory}/{dialogGraph.name}";
+        }
+
+        private static string GetWritableAssetDirectory(string assetPath, string fallbackSubdirectory)
+        {
+            if (!string.IsNullOrEmpty(assetPath) && assetPath.StartsWith("Assets/", StringComparison.Ordinal))
+            {
+                string assetDirectory = Path.GetDirectoryName(assetPath)?.Replace("\\", "/");
+
+                if (!string.IsNullOrEmpty(assetDirectory))
+                {
+                    string outputDirectory = $"{assetDirectory}/{fallbackSubdirectory}";
+                    EnsureAssetDirectory(outputDirectory);
+                    return outputDirectory;
+                }
+            }
+
+            string fallbackDirectory = $"Assets/DialogNodeBasedSystem/{fallbackSubdirectory}";
+            EnsureAssetDirectory(fallbackDirectory);
+            return fallbackDirectory;
+        }
+
+        private static void EnsureAssetDirectory(string assetDirectory)
+        {
+            if (string.IsNullOrEmpty(assetDirectory) || AssetDatabase.IsValidFolder(assetDirectory))
+                return;
+
+            string[] parts = assetDirectory.Split('/');
+            string current = parts[0];
+
+            for (int i = 1; i < parts.Length; i++)
+            {
+                string next = $"{current}/{parts[i]}";
+
+                if (!AssetDatabase.IsValidFolder(next))
+                    AssetDatabase.CreateFolder(current, parts[i]);
+
+                current = next;
+            }
+        }
+
         private void SetUpSentenceNodeKeys(Node node, StringTableCollection table)
         {
             SentenceNode sentenceNode = (SentenceNode)node;

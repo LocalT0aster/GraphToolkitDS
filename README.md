@@ -1,6 +1,6 @@
-# :speech_balloon: Dialog Node Based System (Unity Asset Tool) :speech_balloon:
+# GraphToolkitDS - Dialog Node Based System
 
-**Last Updated:** 07/09/2025
+**Last Updated:** 2026-06-04
 
 **Publisher: cherrydev (Oleg Vishnivetsky)**
 
@@ -11,8 +11,27 @@ You can check the video tutorial on YouTube:
 [Basics](https://www.youtube.com/watch?v=oFOvop46eic&t=16s&ab_channel=cherrydev),
 [New](https://youtu.be/881lzd-p9eg).
 
+## Installation
+
+The primary install method is Unity Package Manager from Git URL:
+
+```text
+https://github.com/LocalT0aster/GraphToolkitDS.git?path=/NodeBasedDialog/Packages/zone.toaster.graphtoolkitds#v1.0.0
+```
+
+The package name is `zone.toaster.graphtoolkitds`. Unity package identifiers must be lowercase, so `GraphToolkitDS` is kept as the display name rather than the official package ID.
+
+The repository also contains `NodeBasedDialog`, a host/demo Unity project with the package embedded at:
+
+```text
+NodeBasedDialog/Packages/zone.toaster.graphtoolkitds
+```
+
+Package dependencies are declared in the package manifest and should be resolved by UPM when installed.
+
 ## 📋 Navigation
 
+- [Installation](#installation)
 - [1. Node Editor 🗂️](#1️⃣-node-editor)
 - [2. Variables 🧠](#2️⃣-variables)
 - [3. Sentence Node 🗣️](#3️⃣-sentence-node)
