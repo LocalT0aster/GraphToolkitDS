@@ -52,7 +52,8 @@ namespace cherrydev.Editor.GraphToolkit
 
         private static bool ApplyPatch()
         {
-            PackageInfo packageInfo = PackageInfo.FindForPackageName(PackageName);
+            UnityEditor.PackageManager.PackageInfo packageInfo =
+                UnityEditor.PackageManager.PackageInfo.FindForPackageName(PackageName);
 
             if (packageInfo == null || string.IsNullOrWhiteSpace(packageInfo.resolvedPath))
                 return false;
