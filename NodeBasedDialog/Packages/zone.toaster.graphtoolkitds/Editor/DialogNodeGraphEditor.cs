@@ -4,7 +4,7 @@ using UnityEngine;
 namespace cherrydev
 {
     [CustomEditor(typeof(DialogNodeGraph))]
-    public class DialogNodeGraphEditor : Editor
+    public class DialogNodeGraphEditor : UnityEditor.Editor
     {
         public override void OnInspectorGUI()
         {

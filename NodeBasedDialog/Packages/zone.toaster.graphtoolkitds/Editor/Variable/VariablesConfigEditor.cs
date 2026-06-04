@@ -4,7 +4,7 @@ using UnityEditor;
 namespace cherrydev
 {
     [CustomEditor(typeof(VariablesConfig))]
-    public class VariablesConfigEditor : Editor
+    public class VariablesConfigEditor : UnityEditor.Editor
     {
         private Vector2 _scrollPosition;
         private string _newVariableName = "";

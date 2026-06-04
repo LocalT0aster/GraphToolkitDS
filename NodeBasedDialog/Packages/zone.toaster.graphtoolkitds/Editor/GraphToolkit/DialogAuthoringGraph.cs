@@ -19,6 +19,16 @@ namespace cherrydev.Editor.GraphToolkit
         public string LocalizationTableName => _localizationTableName;
         public string CharacterNamesLocalizationName => _characterNamesLocalizationName;
 
+        public void ConfigureMigratedSettings(
+            VariablesConfig variablesConfig,
+            string localizationTableName,
+            string characterNamesLocalizationName)
+        {
+            _variablesConfig = variablesConfig;
+            _localizationTableName = localizationTableName ?? string.Empty;
+            _characterNamesLocalizationName = characterNamesLocalizationName ?? string.Empty;
+        }
+
         [MenuItem("Assets/Create/Dialog Node Based System/Dialog Graph", false, 120)]
         private static void CreateAssetFile() =>
             GraphDatabase.PromptInProjectBrowserToCreateNewAsset<DialogAuthoringGraph>("New Dialog Graph");

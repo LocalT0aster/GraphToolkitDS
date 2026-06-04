@@ -2,8 +2,12 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
+using UnityEngine.UI;
 #if UNITY_LOCALIZATION
 using UnityEngine.Localization;
 using UnityEngine.Localization.Settings;
@@ -16,6 +20,16 @@ namespace cherrydev
         [SerializeField] private float _dialogCharDelay;
         [SerializeField] private List<KeyCode> _nextSentenceKeyCodes;
         [SerializeField] private bool _isCanSkippingText = true;
+        [SerializeField] private bool _autoAdvanceSentenceNodes;
+        [SerializeField] private float _autoAdvanceSentenceDelay = 0.65f;
+
+        [Header("Existing Answer Buttons")]
+        [SerializeField] private bool _useExistingAnswerButtons = true;
+        [SerializeField] private GameObject _existingAnswerButtonsRoot;
+        [SerializeField] private bool _activateAnswerButtonParents = true;
+        [SerializeField] private Button[] _answerButtons;
+        [SerializeField] private Color _answerButtonNormalColor = Color.white;
+        [SerializeField] private Color _answerButtonHoverColor = Color.white;
 #if UNITY_LOCALIZATION
         [SerializeField] private bool _reloadTextOnLanguageChange = true;
 #endif
@@ -46,6 +60,7 @@ namespace cherrydev
         private bool _isDialogStarted;
         private bool _isCurrentSentenceSkipped;
         private bool _isCurrentSentenceTyping;
+        private bool _isNextSentenceRequested;
 
         private readonly List<string> _boundFunctionNames = new();
 
@@ -82,8 +97,13 @@ namespace cherrydev
 
         public DialogExternalFunctionsHandler ExternalFunctionsHandler { get; private set; }
         public DialogVariablesHandler VariablesHandler => _variablesHandler;
+        public bool UseExistingAnswerButtons => _useExistingAnswerButtons && _answerButtons != null && _answerButtons.Length > 0;
 
-        private void Awake() => ExternalFunctionsHandler = new DialogExternalFunctionsHandler();
+        private void Awake()
+        {
+            ExternalFunctionsHandler = new DialogExternalFunctionsHandler();
+            HideExistingAnswerButtons();
+        }
 
         private void OnEnable()
         {
@@ -162,6 +182,23 @@ namespace cherrydev
         public void SetNextSentenceKeyCodes(List<KeyCode> keyCodes) => _nextSentenceKeyCodes = keyCodes;
 
         /// <summary>
+        /// Requests current sentence skip or advances to the next node. Designed for UI Button OnClick.
+        /// </summary>
+        public void RequestNextSentence()
+        {
+            if (!_isDialogStarted || !IsActive)
+                return;
+
+            if (_isCurrentSentenceTyping && _isCanSkippingText)
+            {
+                _isCurrentSentenceSkipped = true;
+                return;
+            }
+
+            _isNextSentenceRequested = true;
+        }
+
+        /// <summary>
         /// Start a dialog
         /// </summary>
         /// <param name="dialogNodeGraph"></param>
@@ -190,7 +227,9 @@ namespace cherrydev
             _dialogFinished = onDialogFinished;
             
             DefineFirstNode(dialogNodeGraph);
-            CalculateMaxAmountOfAnswerButtons();
+            if (!UseExistingAnswerButtons)
+                CalculateMaxAmountOfAnswerButtons();
+
             HandleDialogGraphCurrentNode(_currentNode);
         }
 
@@ -318,6 +357,7 @@ namespace cherrydev
                 Node selectedNode = CurrentAnswerNode.ChildNodes[answerIndex];
                 if (selectedNode != null)
                 {
+                    HideExistingAnswerButtons();
                     _currentNode = selectedNode;
                     HandleDialogGraphCurrentNode(_currentNode);
                 }
@@ -392,6 +432,7 @@ namespace cherrydev
             SentenceNode sentenceNode = (SentenceNode)currentNode;
             CurrentSentenceNode = sentenceNode;
 
+            HideExistingAnswerButtons();
             _isCurrentSentenceSkipped = false;
 
             SentenceNodeActivated?.Invoke();
@@ -424,6 +465,19 @@ namespace cherrydev
             CurrentAnswerNode = answerNode;
 
             int amountOfActiveButtons = 0;
+
+            if (UseExistingAnswerButtons)
+            {
+                amountOfActiveButtons = SetUpExistingAnswerButtons(answerNode);
+
+                if (amountOfActiveButtons == 0)
+                {
+                    EndDialog();
+                    return;
+                }
+
+                return;
+            }
 
             AnswerNodeActivated?.Invoke();
 
@@ -550,6 +604,7 @@ namespace cherrydev
         private void EndDialog()
         {
             _isDialogStarted = false;
+            HideExistingAnswerButtons();
 
             _dialogFinished?.Invoke(_variablesHandler);
             
@@ -639,6 +694,7 @@ namespace cherrydev
         private IEnumerator WriteDialogTextRoutine(string text)
         {
             _isCurrentSentenceTyping = true;
+            _isNextSentenceRequested = false;
             SentenceStarted?.Invoke();
 
             foreach (char textChar in text)
@@ -658,9 +714,52 @@ namespace cherrydev
             _isCurrentSentenceTyping = false;
             SentenceEnded?.Invoke();
 
-            yield return new WaitUntil(() => CheckNextSentenceKeyCodes() && IsActive);
+            if (IsCurrentSentenceLeadingToAnswerNode())
+            {
+                CheckForDialogNextNode();
+                yield break;
+            }
 
+            if (ShouldAutoAdvanceCurrentSentence())
+            {
+                float elapsed = 0f;
+                while (elapsed < _autoAdvanceSentenceDelay && !_isNextSentenceRequested && IsActive)
+                {
+                    if (CheckNextSentenceKeyCodes())
+                    {
+                        _isNextSentenceRequested = true;
+                        break;
+                    }
+
+                    elapsed += Time.deltaTime;
+                    yield return null;
+                }
+            }
+            else
+            {
+                yield return new WaitUntil(() => IsActive && (_isNextSentenceRequested || CheckNextSentenceKeyCodes()));
+            }
+
+            _isNextSentenceRequested = false;
             CheckForDialogNextNode();
+        }
+
+        private bool IsCurrentSentenceLeadingToAnswerNode()
+        {
+            if (_currentNode == null || _currentNode.GetType() != typeof(SentenceNode))
+                return false;
+
+            SentenceNode sentenceNode = (SentenceNode)_currentNode;
+            return sentenceNode.ChildNode != null && sentenceNode.ChildNode.GetType() == typeof(AnswerNode);
+        }
+
+        private bool ShouldAutoAdvanceCurrentSentence()
+        {
+            if (!_autoAdvanceSentenceNodes || _currentNode == null || _currentNode.GetType() != typeof(SentenceNode))
+                return false;
+
+            SentenceNode sentenceNode = (SentenceNode)_currentNode;
+            return sentenceNode.ChildNode != null && sentenceNode.ChildNode.GetType() == typeof(SentenceNode);
         }
 
         /// <summary>
@@ -725,6 +824,109 @@ namespace cherrydev
             MaxAmountOfAnswerButtonsCalculated?.Invoke(_maxAmountOfAnswerButtons);
         }
 
+        private int SetUpExistingAnswerButtons(AnswerNode answerNode)
+        {
+            HideExistingAnswerButtons();
+
+            if (_existingAnswerButtonsRoot != null)
+                _existingAnswerButtonsRoot.SetActive(true);
+
+            int activeCount = 0;
+            int buttonCount = Mathf.Min(_answerButtons.Length, answerNode.ChildNodes.Count);
+            for (int i = 0; i < buttonCount; i++)
+            {
+                if (answerNode.ChildNodes[i] == null)
+                    continue;
+
+                Button button = _answerButtons[i];
+                if (button == null)
+                    continue;
+
+                string answerText = answerNode.Answers[i];
+                if (_variablesHandler != null)
+                    answerText = DialogTextProcessor.ProcessText(answerText, _variablesHandler);
+
+                SetAnswerButtonText(button, answerText);
+                SetAnswerButtonColors(button);
+                SetAnswerButtonHoverHighlight(button);
+
+                int answerIndex = i;
+                button.onClick.RemoveAllListeners();
+                button.onClick.AddListener(() => SetCurrentNodeAndHandleDialogGraph(answerIndex));
+
+                if (_activateAnswerButtonParents)
+                    SetParentsActive(button.transform);
+
+                button.gameObject.SetActive(true);
+                button.interactable = true;
+                activeCount++;
+            }
+
+            return activeCount;
+        }
+
+        private void HideExistingAnswerButtons()
+        {
+            if (_answerButtons == null)
+                return;
+
+            if (_existingAnswerButtonsRoot != null)
+                _existingAnswerButtonsRoot.SetActive(false);
+
+            for (int i = 0; i < _answerButtons.Length; i++)
+            {
+                if (_answerButtons[i] != null)
+                    _answerButtons[i].gameObject.SetActive(false);
+            }
+        }
+
+        private static void SetAnswerButtonText(Button button, string text)
+        {
+            TMP_Text tmpText = button.GetComponentInChildren<TMP_Text>(true);
+            if (tmpText != null)
+            {
+                tmpText.text = text;
+                return;
+            }
+
+            Text legacyText = button.GetComponentInChildren<Text>(true);
+            if (legacyText != null)
+                legacyText.text = text;
+        }
+
+        private void SetAnswerButtonColors(Button button)
+        {
+            ColorBlock colors = button.colors;
+            colors.normalColor = _answerButtonNormalColor;
+            colors.highlightedColor = _answerButtonHoverColor;
+            colors.selectedColor = _answerButtonHoverColor;
+            button.colors = colors;
+            button.transition = Selectable.Transition.ColorTint;
+        }
+
+        private void SetAnswerButtonHoverHighlight(Button button)
+        {
+            DialogAnswerButtonHoverHighlight highlight = button.GetComponent<DialogAnswerButtonHoverHighlight>();
+            if (highlight == null)
+                highlight = button.gameObject.AddComponent<DialogAnswerButtonHoverHighlight>();
+
+            highlight.SetColors(_answerButtonNormalColor, _answerButtonHoverColor);
+        }
+
+        private void SetParentsActive(Transform target)
+        {
+            Transform current = target.parent;
+            while (current != null)
+            {
+                current.gameObject.SetActive(true);
+
+                if (_existingAnswerButtonsRoot != null && current.gameObject == _existingAnswerButtonsRoot)
+                    break;
+
+                current = current.parent;
+            }
+        }
+
         /// <summary>
         /// Handles text skipping mechanics
         /// </summary>
@@ -743,13 +945,122 @@ namespace cherrydev
         /// <returns></returns>
         private bool CheckNextSentenceKeyCodes()
         {
+            if (_nextSentenceKeyCodes == null)
+                return false;
+
             for (int i = 0; i < _nextSentenceKeyCodes.Count; i++)
             {
-                if (Input.GetKeyDown(_nextSentenceKeyCodes[i]))
+                if (WasKeyPressedThisFrame(_nextSentenceKeyCodes[i]))
                     return true;
             }
 
             return false;
+        }
+
+        private static bool WasKeyPressedThisFrame(KeyCode keyCode)
+        {
+            if (Keyboard.current != null && TryConvertKeyCode(keyCode, out Key key))
+            {
+                KeyControl keyControl = Keyboard.current[key];
+                if (keyControl != null && keyControl.wasPressedThisFrame)
+                    return true;
+            }
+
+            if (Mouse.current != null)
+            {
+                switch (keyCode)
+                {
+                    case KeyCode.Mouse0:
+                        return Mouse.current.leftButton.wasPressedThisFrame;
+                    case KeyCode.Mouse1:
+                        return Mouse.current.rightButton.wasPressedThisFrame;
+                    case KeyCode.Mouse2:
+                        return Mouse.current.middleButton.wasPressedThisFrame;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryConvertKeyCode(KeyCode keyCode, out Key key)
+        {
+            switch (keyCode)
+            {
+                case KeyCode.None:
+                    key = Key.None;
+                    return false;
+                case KeyCode.Return:
+                    key = Key.Enter;
+                    return true;
+                case KeyCode.KeypadEnter:
+                    key = Key.NumpadEnter;
+                    return true;
+                case KeyCode.BackQuote:
+                    key = Key.Backquote;
+                    return true;
+                case KeyCode.Minus:
+                    key = Key.Minus;
+                    return true;
+                case KeyCode.Equals:
+                    key = Key.Equals;
+                    return true;
+                case KeyCode.LeftBracket:
+                    key = Key.LeftBracket;
+                    return true;
+                case KeyCode.RightBracket:
+                    key = Key.RightBracket;
+                    return true;
+                case KeyCode.Semicolon:
+                    key = Key.Semicolon;
+                    return true;
+                case KeyCode.Quote:
+                    key = Key.Quote;
+                    return true;
+                case KeyCode.Comma:
+                    key = Key.Comma;
+                    return true;
+                case KeyCode.Period:
+                    key = Key.Period;
+                    return true;
+                case KeyCode.Slash:
+                    key = Key.Slash;
+                    return true;
+                case KeyCode.Backslash:
+                    key = Key.Backslash;
+                    return true;
+                case KeyCode.Alpha0:
+                    key = Key.Digit0;
+                    return true;
+                case KeyCode.Alpha1:
+                    key = Key.Digit1;
+                    return true;
+                case KeyCode.Alpha2:
+                    key = Key.Digit2;
+                    return true;
+                case KeyCode.Alpha3:
+                    key = Key.Digit3;
+                    return true;
+                case KeyCode.Alpha4:
+                    key = Key.Digit4;
+                    return true;
+                case KeyCode.Alpha5:
+                    key = Key.Digit5;
+                    return true;
+                case KeyCode.Alpha6:
+                    key = Key.Digit6;
+                    return true;
+                case KeyCode.Alpha7:
+                    key = Key.Digit7;
+                    return true;
+                case KeyCode.Alpha8:
+                    key = Key.Digit8;
+                    return true;
+                case KeyCode.Alpha9:
+                    key = Key.Digit9;
+                    return true;
+            }
+
+            return Enum.TryParse(keyCode.ToString(), out key);
         }
     }
 }

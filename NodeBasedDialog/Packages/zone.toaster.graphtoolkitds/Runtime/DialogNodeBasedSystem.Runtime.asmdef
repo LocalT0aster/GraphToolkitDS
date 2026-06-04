@@ -5,6 +5,7 @@
     "Unity.TextMeshPro",
     "Unity.Timeline",
     "UnityEngine.UI",
+    "Unity.InputSystem",
     "Unity.Localization"
   ],
   "includePlatforms": [],
