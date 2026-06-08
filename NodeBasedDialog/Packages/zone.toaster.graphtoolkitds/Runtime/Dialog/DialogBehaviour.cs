@@ -17,6 +17,7 @@ namespace cherrydev
 {
     public class DialogBehaviour : MonoBehaviour
     {
+        [SerializeField] private DialogPresentationConfig _presentationConfig;
         [SerializeField] private float _dialogCharDelay;
         [SerializeField] private List<KeyCode> _nextSentenceKeyCodes;
         [SerializeField] private bool _isCanSkippingText = true;
@@ -99,6 +100,23 @@ namespace cherrydev
         public DialogExternalFunctionsHandler ExternalFunctionsHandler { get; private set; }
         public DialogVariablesHandler VariablesHandler => _variablesHandler;
         public bool UseExistingAnswerButtons => _useExistingAnswerButtons && _answerButtons != null && _answerButtons.Length > 0;
+        public DialogPresentationConfig PresentationConfig
+        {
+            get => _presentationConfig;
+            set => _presentationConfig = value;
+        }
+
+        public float DialogCharDelay => _presentationConfig != null
+            ? _presentationConfig.DialogCharDelay
+            : Mathf.Max(0f, _dialogCharDelay);
+
+        public bool AutoAdvanceSentenceNodes => _presentationConfig != null
+            ? _presentationConfig.AutoAdvanceSentenceNodes
+            : _autoAdvanceSentenceNodes;
+
+        public float AutoAdvanceSentenceDelay => _presentationConfig != null
+            ? _presentationConfig.AutoAdvanceSentenceDelay
+            : Mathf.Max(0f, _autoAdvanceSentenceDelay);
 
         private void Awake()
         {
@@ -170,11 +188,24 @@ namespace cherrydev
         /// </summary>
         public void Disable() => DialogDisabled?.Invoke();
 
+        public void SetPresentationConfig(DialogPresentationConfig value) => _presentationConfig = value;
+
         /// <summary>
         /// Setting dialogCharDelay float parameter
         /// </summary>
         /// <param name="value"></param>
-        public void SetCharDelay(float value) => _dialogCharDelay = value;
+        public void SetCharDelay(float value) => _dialogCharDelay = Mathf.Max(0f, value);
+
+        public void SetAutoAdvanceSentenceNodes(bool value) => _autoAdvanceSentenceNodes = value;
+
+        public void SetAutoAdvanceSentenceDelay(float value) => _autoAdvanceSentenceDelay = Mathf.Max(0f, value);
+
+        public void ConfigurePacing(float dialogCharDelay, bool autoAdvanceSentenceNodes, float autoAdvanceSentenceDelay)
+        {
+            SetCharDelay(dialogCharDelay);
+            SetAutoAdvanceSentenceNodes(autoAdvanceSentenceNodes);
+            SetAutoAdvanceSentenceDelay(autoAdvanceSentenceDelay);
+        }
 
         /// <summary>
         /// Setting nextSentenceKeyCodes
@@ -721,7 +752,7 @@ namespace cherrydev
 
                 DialogTextCharWrote?.Invoke();
 
-                yield return new WaitForSeconds(_dialogCharDelay);
+                yield return new WaitForSeconds(DialogCharDelay);
             }
 
             _isCurrentSentenceTyping = false;
@@ -736,7 +767,8 @@ namespace cherrydev
             if (ShouldAutoAdvanceCurrentSentence())
             {
                 float elapsed = 0f;
-                while (elapsed < _autoAdvanceSentenceDelay && !_isNextSentenceRequested && IsActive)
+                float autoAdvanceDelay = AutoAdvanceSentenceDelay;
+                while (elapsed < autoAdvanceDelay && !_isNextSentenceRequested && IsActive)
                 {
                     if (CheckNextSentenceKeyCodes())
                     {
@@ -768,7 +800,7 @@ namespace cherrydev
 
         private bool ShouldAutoAdvanceCurrentSentence()
         {
-            if (!_autoAdvanceSentenceNodes || _currentNode == null || _currentNode.GetType() != typeof(SentenceNode))
+            if (!AutoAdvanceSentenceNodes || _currentNode == null || _currentNode.GetType() != typeof(SentenceNode))
                 return false;
 
             SentenceNode sentenceNode = (SentenceNode)_currentNode;

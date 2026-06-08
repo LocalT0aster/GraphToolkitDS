@@ -42,6 +42,12 @@ Package dependencies are declared in `package.json` and are installed by UPM.
 
 You can still force a rebuild from `Tools > Dialog System > Compile Selected Graph Toolkit Dialog Graphs`.
 
+### Presentation Settings
+
+Create a `DialogPresentationConfig` asset from `Assets > Create > Dialog System > Presentation Config` and assign it to `DialogBehaviour` when you want dialogue pacing to be shared across scenes or prefabs. The config controls character delay, whether sentence-to-sentence nodes auto-advance, and the delay before auto-advance.
+
+If no config is assigned, `DialogBehaviour` uses its local serialized timing fields.
+
 ## Dialog Scripts
 
 The package can also compile `.ds.md` scripts into editable `.dialoggtk` graphs and sibling runtime assets. Place the script under `Assets/`; Unity auto-compiles it on import, or use `Tools > Dialog System > Compile Selected Dialog Scripts`.
