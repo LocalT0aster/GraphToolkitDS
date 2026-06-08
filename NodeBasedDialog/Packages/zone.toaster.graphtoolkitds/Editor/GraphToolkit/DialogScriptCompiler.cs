@@ -289,7 +289,6 @@ namespace cherrydev.Editor.GraphToolkit
                         CreateWire(graphModel, binding.Node, DialogGraphPorts.Answer(choiceIndex), branch.First, DialogGraphPorts.Input);
                 }
 
-                RedefineNode(binding.Model);
                 return binding.Node;
             }
 
