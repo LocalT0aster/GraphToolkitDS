@@ -63,6 +63,7 @@ namespace cherrydev
         private bool _isNextSentenceRequested;
 
         private readonly List<string> _boundFunctionNames = new();
+        private readonly List<string> _boundFunctionPrefixes = new();
 
         public bool IsActive { get; set; } = true;
 
@@ -326,6 +327,14 @@ namespace cherrydev
 
             if (!_boundFunctionNames.Contains(funcName))
                 _boundFunctionNames.Add(funcName);
+        }
+
+        public void BindExternalFunctionPrefix(string prefix, Action<string> function)
+        {
+            ExternalFunctionsHandler.BindExternalFunctionPrefix(prefix, function);
+
+            if (!_boundFunctionPrefixes.Contains(prefix))
+                _boundFunctionPrefixes.Add(prefix);
         }
 
         /// <summary>
@@ -611,7 +620,11 @@ namespace cherrydev
             foreach (string funcName in _boundFunctionNames)
                 ExternalFunctionsHandler.UnbindExternalFunction(funcName);
 
+            foreach (string prefix in _boundFunctionPrefixes)
+                ExternalFunctionsHandler.UnbindExternalFunctionPrefix(prefix);
+
             _boundFunctionNames.Clear();
+            _boundFunctionPrefixes.Clear();
             _onDialogFinished?.Invoke();
             _dialogFinished = null;
         }

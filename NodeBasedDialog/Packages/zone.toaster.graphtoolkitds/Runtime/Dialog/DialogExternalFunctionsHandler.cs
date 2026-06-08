@@ -9,6 +9,7 @@ namespace cherrydev
         public delegate object ExternalFunction();
 
         private readonly Dictionary<string, ExternalFunction> _externals = new();
+        private readonly Dictionary<string, Action<string>> _prefixExternals = new();
 
         public ExternalFunction CallExternalFunction(string funcName)
         {
@@ -19,11 +20,17 @@ namespace cherrydev
 
                 return _externals[funcName];
             }
-            else
+            foreach (KeyValuePair<string, Action<string>> prefixExternal in _prefixExternals)
             {
-                Debug.LogWarning($"There is no function with name '{funcName}'");
-                return null;
+                if (funcName.StartsWith(prefixExternal.Key, StringComparison.Ordinal))
+                {
+                    prefixExternal.Value?.Invoke(funcName);
+                    return null;
+                }
             }
+
+            Debug.LogWarning($"There is no function with name '{funcName}'");
+            return null;
         }
 
         public void BindExternalFunction(string funcName, Action function)
@@ -39,6 +46,23 @@ namespace cherrydev
         {
             if (_externals.ContainsKey(funcName))
                 _externals.Remove(funcName);
+        }
+
+        public void BindExternalFunctionPrefix(string prefix, Action<string> function)
+        {
+            if (string.IsNullOrEmpty(prefix))
+                throw new ArgumentException("External function prefix cannot be null or empty.", nameof(prefix));
+
+            if (_prefixExternals.ContainsKey(prefix))
+                _prefixExternals.Remove(prefix);
+
+            _prefixExternals[prefix] = function;
+        }
+
+        public void UnbindExternalFunctionPrefix(string prefix)
+        {
+            if (_prefixExternals.ContainsKey(prefix))
+                _prefixExternals.Remove(prefix);
         }
 
         private void BindExternalFunctionBase(string funcName, ExternalFunction externalFunction)

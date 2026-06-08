@@ -42,6 +42,35 @@ Package dependencies are declared in `package.json` and are installed by UPM.
 
 You can still force a rebuild from `Tools > Dialog System > Compile Selected Graph Toolkit Dialog Graphs`.
 
+## Dialog Scripts
+
+The package can also compile `.ds.md` scripts into editable `.dialoggtk` graphs and sibling runtime assets. Place the script under `Assets/`; Unity auto-compiles it on import, or use `Tools > Dialog System > Compile Selected Dialog Scripts`.
+
+Supported script syntax:
+
+```text
+Alex:
+> Hello.
+> This creates two sentence nodes.
+
+@effect psyche:-5;review:+5
+@function SomeExternalFunction
+
+@choice
+- Stay polite -> polite
+- Be rude -> rude
+
+@section polite
+Alex:
+> Fine. I can check that.
+
+@section rude
+Alex:
+> No.
+```
+
+`@effect` creates an external function node named `effect:<commands>`. Runtime code can handle command-style effects with `DialogBehaviour.BindExternalFunctionPrefix("effect:", handler)`.
+
 Legacy `DialogNodeGraph` assets can still be opened with `Window > Dialog Node Based Editor (Legacy)`. Use `Tools > Dialog System > Migrate Legacy Dialog Graphs` to create a migration manifest and empty Graph Toolkit authoring graph.
 
 ## Samples
