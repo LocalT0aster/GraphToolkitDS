@@ -15,6 +15,8 @@ namespace cherrydev.Editor.GraphToolkit
         public const string SourceExtension = "ds.md";
 
         private const string CompileMenuPath = "Tools/Dialog System/Compile Selected Dialog Scripts";
+        private const string DialoguesRoot = "Assets/Dialogues/";
+        private const string AuthoringGraphsDirectoryName = "AuthoringGraphs";
         private const float NodeSpacingX = 260f;
         private const float NodeSpacingY = 140f;
 
@@ -111,7 +113,45 @@ namespace cherrydev.Editor.GraphToolkit
                 ? fileName.Substring(0, fileName.Length - SourceExtension.Length - 1)
                 : Path.GetFileNameWithoutExtension(scriptPath);
 
-            return $"{directory}/{graphName}.{DialogAuthoringGraph.AssetExtension}";
+            string graphDirectory = GetAuthoringGraphDirectory(directory);
+            EnsureAssetDirectory(graphDirectory);
+            return $"{graphDirectory}/{graphName}.{DialogAuthoringGraph.AssetExtension}";
+        }
+
+        private static string GetAuthoringGraphDirectory(string sourceDirectory)
+        {
+            if (IsDialogueDaySourceDirectory(sourceDirectory))
+                return $"{sourceDirectory}/{AuthoringGraphsDirectoryName}";
+
+            return sourceDirectory;
+        }
+
+        private static bool IsDialogueDaySourceDirectory(string sourceDirectory)
+        {
+            if (string.IsNullOrEmpty(sourceDirectory) || !sourceDirectory.StartsWith(DialoguesRoot, StringComparison.Ordinal))
+                return false;
+
+            string relativePath = sourceDirectory.Substring(DialoguesRoot.Length).Trim('/');
+            return !string.IsNullOrEmpty(relativePath) && !relativePath.Contains("/");
+        }
+
+        private static void EnsureAssetDirectory(string assetDirectory)
+        {
+            if (string.IsNullOrEmpty(assetDirectory) || AssetDatabase.IsValidFolder(assetDirectory))
+                return;
+
+            string[] parts = assetDirectory.Split('/');
+            string current = parts[0];
+
+            for (int i = 1; i < parts.Length; i++)
+            {
+                string next = $"{current}/{parts[i]}";
+
+                if (!AssetDatabase.IsValidFolder(next))
+                    AssetDatabase.CreateFolder(current, parts[i]);
+
+                current = next;
+            }
         }
 
         private static void PopulateAuthoringGraph(DialogAuthoringGraph authoringGraph, DialogScriptDocument document)

@@ -12,6 +12,8 @@ namespace cherrydev.Editor.GraphToolkit
     internal static class DialogGraphCompiler
     {
         private const string CompileMenuPath = "Tools/Dialog System/Compile Selected Graph Toolkit Dialog Graphs";
+        private const string AuthoringGraphsDirectoryName = "AuthoringGraphs";
+        private const string RuntimeGraphsDirectoryName = "RuntimeGraphs";
 
         [MenuItem(CompileMenuPath)]
         private static void CompileSelectedGraphs()
@@ -391,8 +393,28 @@ namespace cherrydev.Editor.GraphToolkit
         private static string GetRuntimeAssetPath(string graphPath)
         {
             string graphName = Path.GetFileNameWithoutExtension(graphPath);
-            string directory = GetWritableAssetDirectory(graphPath, "Compiled");
+            string directory = GetRuntimeAssetDirectory(graphPath);
             return $"{directory}/{graphName}_Runtime.asset";
+        }
+
+        private static string GetRuntimeAssetDirectory(string graphPath)
+        {
+            string assetDirectory = Path.GetDirectoryName(graphPath)?.Replace("\\", "/");
+
+            if (!string.IsNullOrEmpty(assetDirectory) &&
+                string.Equals(Path.GetFileName(assetDirectory), AuthoringGraphsDirectoryName, StringComparison.Ordinal))
+            {
+                string parentDirectory = Path.GetDirectoryName(assetDirectory)?.Replace("\\", "/");
+
+                if (!string.IsNullOrEmpty(parentDirectory))
+                {
+                    string runtimeDirectory = $"{parentDirectory}/{RuntimeGraphsDirectoryName}";
+                    EnsureAssetDirectory(runtimeDirectory);
+                    return runtimeDirectory;
+                }
+            }
+
+            return GetWritableAssetDirectory(graphPath, "Compiled");
         }
 
         private static string GetWritableAssetDirectory(string assetPath, string fallbackSubdirectory)
