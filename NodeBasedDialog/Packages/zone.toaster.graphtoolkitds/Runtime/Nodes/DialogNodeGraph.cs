@@ -22,6 +22,8 @@ namespace cherrydev
         [SerializeField] private string _localizationTableName;
         [SerializeField] private string _characterNamesLocalizationName;
         [SerializeField] private string _authoringGraphGuid;
+        [SerializeField] private string _pauseTargetSectionId;
+        [SerializeField] private string _pauseContinuationGraphGuid;
 
         [HideInInspector] public Node NodeToDrawLineFrom;
         [HideInInspector] public Vector2 LinePosition = Vector2.zero;
@@ -29,6 +31,8 @@ namespace cherrydev
         public string LocalizationTableName => _localizationTableName;
         public string CharacterNamesLocalizationName => _characterNamesLocalizationName;
         public string AuthoringGraphGuid => _authoringGraphGuid;
+        public string PauseTargetSectionId => _pauseTargetSectionId;
+        public string PauseContinuationGraphGuid => _pauseContinuationGraphGuid;
 
         [HideInInspector] public bool IsLocalizationSetUp;
 
@@ -37,17 +41,27 @@ namespace cherrydev
             VariablesConfig variablesConfig,
             string localizationTableName,
             string characterNamesLocalizationName,
-            string authoringGraphGuid)
+            string authoringGraphGuid,
+            string pauseTargetSectionId = "",
+            string pauseContinuationGraphGuid = "")
         {
             NodesList = nodes ?? new List<Node>();
             VariablesConfig = variablesConfig;
             _localizationTableName = localizationTableName ?? string.Empty;
             _characterNamesLocalizationName = characterNamesLocalizationName ?? string.Empty;
             _authoringGraphGuid = authoringGraphGuid ?? string.Empty;
+            _pauseTargetSectionId = pauseTargetSectionId ?? string.Empty;
+            _pauseContinuationGraphGuid = pauseContinuationGraphGuid ?? string.Empty;
             IsLocalizationSetUp = !string.IsNullOrEmpty(_localizationTableName);
 
             foreach (Node node in NodesList)
                 node?.AssignNodeGraph(this);
+        }
+
+        public void ConfigurePauseContinuation(string pauseTargetSectionId, string pauseContinuationGraphGuid)
+        {
+            _pauseTargetSectionId = pauseTargetSectionId ?? string.Empty;
+            _pauseContinuationGraphGuid = pauseContinuationGraphGuid ?? string.Empty;
         }
 
 #if UNITY_EDITOR
