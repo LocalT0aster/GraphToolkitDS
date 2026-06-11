@@ -84,6 +84,209 @@ namespace cherrydev.Editor.GraphToolkit.Tests
             Assert.IsTrue(diagnostic.IsError);
             Assert.AreEqual(1, diagnostic.LineNumber);
         }
+
+        [Test]
+        public void ParserTrimsLinesAndIgnoresMarkdownNotes()
+        {
+            DialogScriptParseResult parseResult = DialogScriptParser.Parse(
+                "  Alex:  \n" +
+                "# comment\n" +
+                "  > Hello.  \n" +
+                " --- \n" +
+                "* note\n" +
+                "(stage note)\n" +
+                "\n",
+                ScriptPath);
+
+            Assert.IsFalse(parseResult.Diagnostics.Any(diagnostic => diagnostic.IsError));
+
+            var sentence = (DialogScriptSentenceStatement)parseResult.Document.MainStatements.Single();
+
+            Assert.AreEqual("Alex", sentence.Speaker);
+            Assert.AreEqual("Hello.", sentence.Text);
+            Assert.AreEqual(3, sentence.LineNumber);
+        }
+
+        [Test]
+        public void ParserSilentlySkipsPlainTextAndStrayChoiceOptions()
+        {
+            DialogScriptParseResult parseResult = DialogScriptParser.Parse(
+                "Alex\n" +
+                "Plain text without marker\n" +
+                "- orphan -> section\n" +
+                "> Spoken.",
+                ScriptPath);
+
+            Assert.IsFalse(parseResult.Diagnostics.Any(diagnostic => diagnostic.IsError));
+
+            var sentence = (DialogScriptSentenceStatement)parseResult.Document.MainStatements.Single();
+
+            Assert.AreEqual(string.Empty, sentence.Speaker);
+            Assert.AreEqual("Spoken.", sentence.Text);
+        }
+
+        [Test]
+        public void ParserResetsSpeakerWhenEnteringSection()
+        {
+            DialogScriptParseResult parseResult = DialogScriptParser.Parse(
+                "Alex:\n" +
+                "> Main.\n" +
+                "@section after_delivery\n" +
+                "> After.",
+                ScriptPath);
+
+            Assert.IsTrue(parseResult.Document.TryGetSection("after_delivery", out IReadOnlyList<DialogScriptStatement> statements));
+
+            var sentence = (DialogScriptSentenceStatement)statements.Single();
+
+            Assert.AreEqual(string.Empty, sentence.Speaker);
+            Assert.AreEqual("After.", sentence.Text);
+        }
+
+        [Test]
+        public void ParserAppendsDuplicateSectionsAndMatchesSectionIdsCaseSensitively()
+        {
+            DialogScriptParseResult parseResult = DialogScriptParser.Parse(
+                "@section branch\n" +
+                "Alex:\n" +
+                "> One.\n" +
+                "@section Branch\n" +
+                "> Other.\n" +
+                "@section branch\n" +
+                "> Two.",
+                ScriptPath);
+
+            Assert.IsTrue(parseResult.Document.TryGetSection("branch", out IReadOnlyList<DialogScriptStatement> branchStatements));
+            Assert.IsTrue(parseResult.Document.TryGetSection("Branch", out IReadOnlyList<DialogScriptStatement> capitalizedBranchStatements));
+
+            Assert.AreEqual(2, branchStatements.Count);
+            Assert.AreEqual(1, capitalizedBranchStatements.Count);
+            Assert.AreEqual("One.", ((DialogScriptSentenceStatement)branchStatements[0]).Text);
+            Assert.AreEqual("Two.", ((DialogScriptSentenceStatement)branchStatements[1]).Text);
+        }
+
+        [Test]
+        public void ParserReadsChoiceOptionsThroughIgnoredLinesAndSplitsAtLastArrow()
+        {
+            DialogScriptParseResult parseResult = DialogScriptParser.Parse(
+                "@choice\n" +
+                "# comment\n" +
+                "- Ask about A -> B -> branch\n" +
+                "\n" +
+                "@section branch\n" +
+                "Alex:\n" +
+                "> Branch.",
+                ScriptPath);
+
+            var choice = (DialogScriptChoiceStatement)parseResult.Document.MainStatements.Single();
+            DialogScriptChoiceOption option = choice.Choices.Single();
+
+            Assert.AreEqual("Ask about A -> B", option.Text);
+            Assert.AreEqual("branch", option.TargetSection);
+            Assert.AreEqual(3, option.LineNumber);
+            Assert.IsTrue(parseResult.Document.TryGetSection("branch", out _));
+        }
+
+        [Test]
+        public void ParserIgnoresChoicePayload()
+        {
+            DialogScriptParseResult parseResult = DialogScriptParser.Parse(
+                "@choice ignored payload\n" +
+                "- Continue -> branch\n" +
+                "@section branch\n" +
+                "> Branch.",
+                ScriptPath);
+
+            var choice = (DialogScriptChoiceStatement)parseResult.Document.MainStatements.Single();
+
+            Assert.AreEqual(1, choice.Choices.Count);
+            Assert.AreEqual("Continue", choice.Choices[0].Text);
+            Assert.AreEqual("branch", choice.Choices[0].TargetSection);
+        }
+
+        [Test]
+        public void ParserCreatesEffectAndFunctionExternalFunctionStatements()
+        {
+            DialogScriptParseResult parseResult = DialogScriptParser.Parse(
+                "@effect customer.show_qr\n" +
+                "@function SomeExternalFunction",
+                ScriptPath);
+
+            List<DialogScriptExternalFunctionStatement> externalFunctions = parseResult.Document.MainStatements
+                .OfType<DialogScriptExternalFunctionStatement>()
+                .ToList();
+
+            Assert.AreEqual(2, externalFunctions.Count);
+            Assert.AreEqual("effect:customer.show_qr", externalFunctions[0].FunctionName);
+            Assert.AreEqual("SomeExternalFunction", externalFunctions[1].FunctionName);
+        }
+
+        [Test]
+        public void ParserAcceptsDirectivePayloadAfterTab()
+        {
+            DialogScriptParseResult parseResult = DialogScriptParser.Parse(
+                "@section\tbranch\n" +
+                "@function\tSomeExternalFunction",
+                ScriptPath);
+
+            Assert.IsTrue(parseResult.Document.TryGetSection("branch", out IReadOnlyList<DialogScriptStatement> statements));
+
+            var externalFunction = (DialogScriptExternalFunctionStatement)statements.Single();
+
+            Assert.AreEqual("SomeExternalFunction", externalFunction.FunctionName);
+        }
+
+        [Test]
+        public void ValidateSourceReportsMissingDirectivePayloads()
+        {
+            IReadOnlyList<DialogScriptDiagnostic> diagnostics = DialogScriptCompiler.ValidateSource(
+                "@section\n" +
+                "@effect\n" +
+                "@function\n" +
+                "@pause",
+                ScriptPath);
+
+            List<DialogScriptDiagnostic> missingPayloads = diagnostics
+                .Where(diagnostic => diagnostic.Code == "DIALOG_SCRIPT_MISSING_DIRECTIVE_PAYLOAD")
+                .ToList();
+
+            Assert.AreEqual(4, missingPayloads.Count);
+            CollectionAssert.AreEqual(new[] { 1, 2, 3, 4 }, missingPayloads.Select(diagnostic => diagnostic.LineNumber));
+        }
+
+        [Test]
+        public void ValidateSourceReportsMalformedChoiceOptions()
+        {
+            IReadOnlyList<DialogScriptDiagnostic> diagnostics = DialogScriptCompiler.ValidateSource(
+                "@choice\n" +
+                "- Missing arrow\n" +
+                "- -> branch\n" +
+                "- Text ->\n" +
+                "@section branch\n" +
+                "> Branch.",
+                ScriptPath);
+
+            List<DialogScriptDiagnostic> malformedChoices = diagnostics
+                .Where(diagnostic => diagnostic.Code == "DIALOG_SCRIPT_MALFORMED_CHOICE")
+                .ToList();
+
+            Assert.AreEqual(3, malformedChoices.Count);
+            CollectionAssert.AreEqual(new[] { 2, 3, 4 }, malformedChoices.Select(diagnostic => diagnostic.LineNumber));
+        }
+
+        [Test]
+        public void ValidateSourceReportsMissingChoiceTarget()
+        {
+            IReadOnlyList<DialogScriptDiagnostic> diagnostics = DialogScriptCompiler.ValidateSource(
+                "@choice\n" +
+                "- Leave -> missing_section",
+                ScriptPath);
+
+            DialogScriptDiagnostic diagnostic = diagnostics.Single(item => item.Code == "DIALOG_SCRIPT_MISSING_CHOICE_TARGET");
+
+            Assert.IsTrue(diagnostic.IsError);
+            Assert.AreEqual(2, diagnostic.LineNumber);
+        }
     }
 
     public sealed class TestExternalFunctionValidator : IDialogScriptExternalFunctionValidator

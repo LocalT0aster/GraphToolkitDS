@@ -52,15 +52,14 @@ If no config is assigned, `DialogBehaviour` uses its local serialized timing fie
 
 The package can also compile `.ds.md` scripts into editable `.dialoggtk` graphs and sibling runtime assets. Place the script under `Assets/`; Unity auto-compiles it on import, or use `Tools > Dialog System > Compile Selected Dialog Scripts`.
 
-Supported script syntax:
+Minimal script example:
 
 ```text
 Alex:
 > Hello.
 > This creates two sentence nodes.
 
-@effect psyche:-5;review:+5
-@function SomeExternalFunction
+@effect customer.show_qr
 
 @choice
 - Stay polite -> polite
@@ -75,6 +74,8 @@ Alex:
 > No.
 ```
 
+The full deterministic format specification is in `Documentation~/DialogScriptFormat.md`.
+
 `@effect` creates an external function node named `effect:<commands>`. Runtime code can handle command-style effects with `DialogBehaviour.BindExternalFunctionPrefix("effect:", handler)`.
 
 Legacy `DialogNodeGraph` assets can still be opened with `Window > Dialog Node Based Editor (Legacy)`. Use `Tools > Dialog System > Migrate Legacy Dialog Graphs` to create a migration manifest and empty Graph Toolkit authoring graph.
@@ -87,4 +88,4 @@ If Unity does not automatically select the imported sample localization settings
 
 ## Documentation
 
-The original PDF guide is included under `Documentation~`.
+The original PDF guide and the `.ds.md` script format specification are included under `Documentation~`.
