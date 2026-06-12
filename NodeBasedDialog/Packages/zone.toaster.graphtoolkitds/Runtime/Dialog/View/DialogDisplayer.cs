@@ -136,12 +136,9 @@ namespace cherrydev
         /// <param name="answerText"></param>
         public void SetUpAnswerDialogPanel(int index, string answerText)
         {
-            AnswerNode currentAnswerNode = _dialogBehaviour.CurrentAnswerNode;
-            
-            if (currentAnswerNode != null)
-                _dialogAnswerPanel.GetButtonTextByIndex(index).text = currentAnswerNode.GetAnswerText(index);
-            else
-                _dialogAnswerPanel.GetButtonTextByIndex(index).text = answerText;
+            _dialogAnswerPanel.GetButtonTextByIndex(index).text = _dialogBehaviour.CurrentAnswerNode != null
+                ? _dialogBehaviour.GetCurrentAnswerTextForDisplayIndex(index)
+                : answerText;
         }
 
         private void HandleLanguageChanged()
@@ -159,11 +156,11 @@ namespace cherrydev
             
             if (currentAnswerNode != null)
             {
-                for (int i = 0; i < currentAnswerNode.Answers.Count; i++)
+                for (int i = 0; i < _dialogAnswerPanel.GetButtonCount(); i++)
                 {
-                    if (i < _dialogAnswerPanel.GetButtonCount() &&
-                        _dialogAnswerPanel.GetButtonByIndex(i).gameObject.activeSelf)
-                        _dialogAnswerPanel.GetButtonTextByIndex(i).text = currentAnswerNode.GetAnswerText(i);
+                    if (_dialogAnswerPanel.GetButtonByIndex(i).gameObject.activeSelf)
+                        _dialogAnswerPanel.GetButtonTextByIndex(i).text =
+                            _dialogBehaviour.GetCurrentAnswerTextForDisplayIndex(i);
                 }
             }
         }

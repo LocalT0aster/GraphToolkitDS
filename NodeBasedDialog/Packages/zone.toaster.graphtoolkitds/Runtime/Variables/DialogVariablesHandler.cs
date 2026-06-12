@@ -17,7 +17,7 @@ namespace cherrydev
 
         public DialogVariablesHandler(VariablesConfig variablesConfig)
         {
-            _variablesConfig = variablesConfig;
+            _variablesConfig = variablesConfig != null ? variablesConfig.CreateRuntimeCopy() : null;
             LoadVariables();
         }
 
@@ -64,10 +64,51 @@ namespace cherrydev
                 return;
             }
 
-            modifyNode.ExecuteModification();
-            
+            ExecuteModification(variable, modifyNode);
+
             VariableChanged?.Invoke(modifyNode.VariableName);
             VariableModified?.Invoke(modifyNode);
+        }
+
+        private void ExecuteModification(Variable variable, ModifyVariableNode modifyNode)
+        {
+            switch (variable.Type)
+            {
+                case VariableType.Bool:
+                    bool boolValue = modifyNode.Modification == ModificationType.Toggle
+                        ? !variable.GetBoolValue()
+                        : modifyNode.BoolValue;
+                    variable.SetValue(boolValue);
+                    break;
+                case VariableType.Int:
+                    int currentInt = variable.GetIntValue();
+                    int nextInt = modifyNode.Modification switch
+                    {
+                        ModificationType.Set => modifyNode.IntValue,
+                        ModificationType.Increase => currentInt + modifyNode.IntValue,
+                        ModificationType.Decrease => currentInt - modifyNode.IntValue,
+                        _ => modifyNode.IntValue
+                    };
+                    variable.SetValue(nextInt);
+                    break;
+                case VariableType.Float:
+                    float currentFloat = variable.GetFloatValue();
+                    float nextFloat = modifyNode.Modification switch
+                    {
+                        ModificationType.Set => modifyNode.FloatValue,
+                        ModificationType.Increase => currentFloat + modifyNode.FloatValue,
+                        ModificationType.Decrease => currentFloat - modifyNode.FloatValue,
+                        _ => modifyNode.FloatValue
+                    };
+                    variable.SetValue(nextFloat);
+                    break;
+                case VariableType.String:
+                    variable.SetValue(modifyNode.StringValue);
+                    break;
+            }
+
+            if (variable.SaveToPrefs)
+                _variablesConfig?.SaveVariable(variable);
         }
 
         /// <summary>
@@ -256,8 +297,8 @@ namespace cherrydev
         /// <param name="newVariablesConfig">New variables config</param>
         public void UpdateVariablesConfig(VariablesConfig newVariablesConfig)
         {
-            _variablesConfig = newVariablesConfig;
-            
+            _variablesConfig = newVariablesConfig != null ? newVariablesConfig.CreateRuntimeCopy() : null;
+
             if (_variablesConfig != null)
                 LoadVariables();
         }

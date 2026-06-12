@@ -36,6 +36,7 @@ namespace cherrydev.Editor.GraphToolkit
         public const string AnswerCount = "answerCount";
         public const string AnswerTextPrefix = "answerText_";
         public const string AnswerKeyPrefix = "answerKey_";
+        public const string AnswerConditionPrefix = "answerCondition_";
 
         public const string FunctionName = "functionName";
         public const string FunctionDescription = "functionDescription";
@@ -45,6 +46,7 @@ namespace cherrydev.Editor.GraphToolkit
         public const string CharacterNamesLocalizationName = "characterNamesLocalizationName";
 
         public const string VariableName = "variableName";
+        public const string ConditionExpression = "conditionExpression";
         public const string ModificationType = "modificationType";
         public const string ConditionType = "conditionType";
         public const string BoolValue = "boolValue";

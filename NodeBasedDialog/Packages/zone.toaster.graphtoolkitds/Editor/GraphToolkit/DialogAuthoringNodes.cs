@@ -110,6 +110,11 @@ namespace cherrydev.Editor.GraphToolkit
                     .ShowInInspectorOnly()
                     .Delayed()
                     .Build();
+                context.AddOption<string>(DialogGraphOptions.AnswerConditionPrefix + i)
+                    .WithDisplayName($"Answer {i + 1} If")
+                    .ShowInInspectorOnly()
+                    .Delayed()
+                    .Build();
             }
         }
 
@@ -221,6 +226,10 @@ namespace cherrydev.Editor.GraphToolkit
         {
             context.AddOption<string>(DialogGraphOptions.VariableName)
                 .WithDisplayName("Variable")
+                .Delayed()
+                .Build();
+            context.AddOption<string>(DialogGraphOptions.ConditionExpression)
+                .WithDisplayName("Expression")
                 .Delayed()
                 .Build();
             context.AddOption<ConditionType>(DialogGraphOptions.ConditionType)

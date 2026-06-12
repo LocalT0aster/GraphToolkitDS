@@ -85,11 +85,12 @@ namespace cherrydev.Editor.GraphToolkit
                 throw new InvalidOperationException($"Dialog script has {errorCount} validation error(s).");
 
             DialogScriptDocument document = parseResult.Document;
+            VariablesConfig variablesConfig = BuildVariablesConfig(scriptPath, document);
             string graphPath = GetAuthoringGraphPath(scriptPath);
 
-            DialogNodeGraph runtimeGraph = CompileGraph(scriptPath, graphPath, document, document.MainStatements, "main");
+            DialogNodeGraph runtimeGraph = CompileGraph(scriptPath, graphPath, document, document.MainStatements, "main", variablesConfig);
             string runtimePath = AssetDatabase.GetAssetPath(runtimeGraph);
-            List<DialogScriptPauseCompilationResult> pauseContinuations = CompilePauseContinuations(scriptPath, document);
+            List<DialogScriptPauseCompilationResult> pauseContinuations = CompilePauseContinuations(scriptPath, document, variablesConfig);
 
             if (pauseContinuations.Count > 0)
             {
@@ -155,13 +156,15 @@ namespace cherrydev.Editor.GraphToolkit
             string graphPath,
             DialogScriptDocument document,
             IReadOnlyList<DialogScriptStatement> entryStatements,
-            string entryLabel)
+            string entryLabel,
+            VariablesConfig variablesConfig)
         {
             if (AssetDatabase.LoadMainAssetAtPath(graphPath) != null)
                 AssetDatabase.DeleteAsset(graphPath);
 
             DialogAuthoringGraph authoringGraph = GraphDatabase.CreateGraph<DialogAuthoringGraph>(graphPath);
-            PopulateAuthoringGraph(authoringGraph, document, entryStatements, entryLabel);
+            authoringGraph.ConfigureMigratedSettings(variablesConfig, string.Empty, string.Empty);
+            PopulateAuthoringGraph(authoringGraph, document, entryStatements, entryLabel, variablesConfig);
             GraphDatabase.SaveGraphIfDirty(authoringGraph);
             AssetDatabase.ImportAsset(graphPath);
 
@@ -172,7 +175,8 @@ namespace cherrydev.Editor.GraphToolkit
 
         private static List<DialogScriptPauseCompilationResult> CompilePauseContinuations(
             string scriptPath,
-            DialogScriptDocument document)
+            DialogScriptDocument document,
+            VariablesConfig variablesConfig)
         {
             var continuations = new List<DialogScriptPauseCompilationResult>();
             var compiledSectionIds = new HashSet<string>(StringComparer.Ordinal);
@@ -191,7 +195,8 @@ namespace cherrydev.Editor.GraphToolkit
                     continuationGraphPath,
                     document,
                     statements,
-                    pause.TargetSectionId);
+                    pause.TargetSectionId,
+                    variablesConfig);
 
                 continuations.Add(new DialogScriptPauseCompilationResult(
                     pause.TargetSectionId,
@@ -211,6 +216,64 @@ namespace cherrydev.Editor.GraphToolkit
                 else
                     Debug.LogWarning(diagnostic.FormatMessage());
             }
+        }
+
+        private static VariablesConfig BuildVariablesConfig(string scriptPath, DialogScriptDocument document)
+        {
+            if (document == null || document.Variables.Count == 0)
+                return null;
+
+            string variablesPath = GetVariablesConfigPath(scriptPath);
+            EnsureAssetDirectory(Path.GetDirectoryName(variablesPath)?.Replace("\\", "/"));
+
+            VariablesConfig variablesConfig = AssetDatabase.LoadAssetAtPath<VariablesConfig>(variablesPath);
+
+            if (variablesConfig == null)
+            {
+                variablesConfig = ScriptableObject.CreateInstance<VariablesConfig>();
+                variablesConfig.name = Path.GetFileNameWithoutExtension(variablesPath);
+                AssetDatabase.CreateAsset(variablesConfig, variablesPath);
+            }
+
+            variablesConfig.Variables.Clear();
+
+            foreach (DialogScriptVariableDeclaration declaration in document.Variables)
+            {
+                var variable = new Variable(declaration.Name, declaration.Type, false);
+
+                switch (declaration.Type)
+                {
+                    case VariableType.Bool:
+                        variable.SetValue(declaration.BoolValue);
+                        break;
+                    case VariableType.Int:
+                        variable.SetValue(declaration.IntValue);
+                        break;
+                    case VariableType.Float:
+                        variable.SetValue(declaration.FloatValue);
+                        break;
+                    case VariableType.String:
+                        variable.SetValue(declaration.StringValue);
+                        break;
+                }
+
+                variablesConfig.AddVariable(variable);
+            }
+
+            EditorUtility.SetDirty(variablesConfig);
+            return variablesConfig;
+        }
+
+        private static string GetVariablesConfigPath(string scriptPath)
+        {
+            string directory = Path.GetDirectoryName(scriptPath)?.Replace("\\", "/");
+            string fileName = Path.GetFileName(scriptPath);
+            string graphName = fileName.EndsWith($".{SourceExtension}", StringComparison.OrdinalIgnoreCase)
+                ? fileName.Substring(0, fileName.Length - SourceExtension.Length - 1)
+                : Path.GetFileNameWithoutExtension(scriptPath);
+            string graphDirectory = GetAuthoringGraphDirectory(directory);
+            EnsureAssetDirectory(graphDirectory);
+            return $"{graphDirectory}/{graphName}_Variables.asset";
         }
 
         private static string SanitizeAssetNameFragment(string value)
@@ -269,7 +332,8 @@ namespace cherrydev.Editor.GraphToolkit
             DialogAuthoringGraph authoringGraph,
             DialogScriptDocument document,
             IReadOnlyList<DialogScriptStatement> entryStatements,
-            string entryLabel)
+            string entryLabel,
+            VariablesConfig variablesConfig)
         {
             object graphModel = GetGraphModel(authoringGraph);
 
@@ -277,6 +341,16 @@ namespace cherrydev.Editor.GraphToolkit
                 throw new InvalidOperationException("Could not access Graph Toolkit graph model.");
 
             AuthoringNodeBinding startNode = CreateAuthoringNode(graphModel, new DialogStartNode(), new Vector2(-NodeSpacingX, 0f));
+            if (variablesConfig != null)
+            {
+                AuthoringNodeBinding settingsNode = CreateAuthoringNode(
+                    graphModel,
+                    new DialogGraphSettingsNode(),
+                    new Vector2(-NodeSpacingX, -NodeSpacingY));
+                SetOption(settingsNode.Node, DialogGraphOptions.VariablesConfig, variablesConfig);
+                RedefineNode(settingsNode.Model);
+            }
+
             DialogScriptGraphBuilder builder = new(graphModel, document);
             BuildSequenceResult main = builder.Build(entryStatements, Vector2.zero, entryLabel);
 
@@ -361,7 +435,7 @@ namespace cherrydev.Editor.GraphToolkit
             public BuildSequenceResult Build(IReadOnlyList<DialogScriptStatement> statements, Vector2 origin, string label)
             {
                 GtkNode first = null;
-                GtkNode previous = null;
+                List<FlowExit> pendingExits = new();
 
                 for (int index = 0; index < statements.Count; index++)
                 {
@@ -371,50 +445,56 @@ namespace cherrydev.Editor.GraphToolkit
                         break;
 
                     Vector2 position = origin + new Vector2(index * NodeSpacingX, 0f);
-                    GtkNode current = CreateNode(statement, position, label, index);
+                    BuildSequenceResult current = CreateStatement(statement, position, label, index);
 
-                    if (current == null)
+                    if (current.First == null)
                         continue;
 
-                    first ??= current;
+                    first ??= current.First;
 
-                    if (previous != null)
-                        CreateWire(graphModel, previous, DialogGraphPorts.Next, current, DialogGraphPorts.Input);
+                    foreach (FlowExit pendingExit in pendingExits)
+                        CreateWire(graphModel, pendingExit.Node, pendingExit.PortName, current.First, DialogGraphPorts.Input);
 
                     if (statement is DialogScriptChoiceStatement && HasStatementBeforePause(statements, index + 1))
                         throw new InvalidOperationException($"Choice in '{label}' must be the last statement in its sequence.");
 
-                    previous = statement is DialogScriptChoiceStatement ? null : current;
+                    if (statement is DialogScriptConditionalStatement conditional && conditional.UsesSectionTargets && HasStatementBeforePause(statements, index + 1))
+                        throw new InvalidOperationException($"Section-jump condition in '{label}' must be the last statement in its sequence.");
+
+                    pendingExits = new List<FlowExit>(current.Exits);
                 }
 
-                return new BuildSequenceResult(first, previous);
+                return new BuildSequenceResult(first, pendingExits);
             }
 
             private static bool HasStatementBeforePause(IReadOnlyList<DialogScriptStatement> statements, int startIndex)
             {
-                for (int index = startIndex; index < statements.Count; index++)
-                {
-                    if (statements[index] is DialogScriptPauseStatement)
-                        return false;
+                if (startIndex >= statements.Count)
+                    return false;
 
-                    return true;
-                }
-
-                return false;
+                return statements[startIndex] is not DialogScriptPauseStatement;
             }
 
-            private GtkNode CreateNode(DialogScriptStatement statement, Vector2 position, string label, int index)
+            private BuildSequenceResult CreateStatement(DialogScriptStatement statement, Vector2 position, string label, int index)
             {
                 switch (statement)
                 {
                     case DialogScriptSentenceStatement sentence:
-                        return CreateSentenceNode(sentence, position);
+                    {
+                        GtkNode node = CreateSentenceNode(sentence, position);
+                        return BuildSequenceResult.Single(node, DialogGraphPorts.Next);
+                    }
                     case DialogScriptExternalFunctionStatement externalFunction:
-                        return CreateExternalFunctionNode(externalFunction, position);
+                    {
+                        GtkNode node = CreateExternalFunctionNode(externalFunction, position);
+                        return BuildSequenceResult.Single(node, DialogGraphPorts.Next);
+                    }
                     case DialogScriptChoiceStatement choice:
                         return CreateChoiceNode(choice, position, label, index);
+                    case DialogScriptConditionalStatement conditional:
+                        return CreateConditionalNode(conditional, position, label, index);
                     default:
-                        return null;
+                        return BuildSequenceResult.Empty;
                 }
             }
 
@@ -436,7 +516,7 @@ namespace cherrydev.Editor.GraphToolkit
                 return binding.Node;
             }
 
-            private GtkNode CreateChoiceNode(DialogScriptChoiceStatement choice, Vector2 position, string label, int index)
+            private BuildSequenceResult CreateChoiceNode(DialogScriptChoiceStatement choice, Vector2 position, string label, int index)
             {
                 if (choice.Choices.Count == 0)
                     throw new InvalidOperationException($"Choice in '{label}' has no answer options.");
@@ -451,6 +531,7 @@ namespace cherrydev.Editor.GraphToolkit
                     DialogScriptChoiceOption option = choice.Choices[choiceIndex];
                     SetOption(binding.Node, DialogGraphOptions.AnswerTextPrefix + choiceIndex, option.Text);
                     SetOption(binding.Node, DialogGraphOptions.AnswerKeyPrefix + choiceIndex, option.TargetSection);
+                    SetOption(binding.Node, DialogGraphOptions.AnswerConditionPrefix + choiceIndex, option.ConditionExpression);
 
                     BuildSequenceResult branch = BuildSection(
                         option.TargetSection,
@@ -461,7 +542,78 @@ namespace cherrydev.Editor.GraphToolkit
                         CreateWire(graphModel, binding.Node, DialogGraphPorts.Answer(choiceIndex), branch.First, DialogGraphPorts.Input);
                 }
 
-                return binding.Node;
+                return new BuildSequenceResult(binding.Node, Array.Empty<FlowExit>());
+            }
+
+            private BuildSequenceResult CreateConditionalNode(
+                DialogScriptConditionalStatement conditional,
+                Vector2 position,
+                string label,
+                int index)
+            {
+                AuthoringNodeBinding binding = CreateAuthoringNode(graphModel, new DialogVariableConditionNode(), position);
+                SetOption(binding.Node, DialogGraphOptions.ConditionExpression, conditional.ConditionExpression);
+                RedefineNode(binding.Model);
+
+                if (conditional.UsesSectionTargets)
+                {
+                    WireConditionalSectionTarget(
+                        binding.Node,
+                        DialogGraphPorts.True,
+                        conditional.TrueTargetSection,
+                        position + new Vector2(NodeSpacingX, -NodeSpacingY * 0.5f),
+                        $"{label}.if_{index + 1}.true");
+                    WireConditionalSectionTarget(
+                        binding.Node,
+                        DialogGraphPorts.False,
+                        conditional.FalseTargetSection,
+                        position + new Vector2(NodeSpacingX, NodeSpacingY * 0.5f),
+                        $"{label}.if_{index + 1}.false");
+
+                    return new BuildSequenceResult(binding.Node, Array.Empty<FlowExit>());
+                }
+
+                var exits = new List<FlowExit>();
+                BuildSequenceResult trueBranch = Build(
+                    conditional.TrueStatements,
+                    position + new Vector2(NodeSpacingX, -NodeSpacingY * 0.5f),
+                    $"{label}.if_{index + 1}.true");
+
+                if (trueBranch.First != null)
+                {
+                    CreateWire(graphModel, binding.Node, DialogGraphPorts.True, trueBranch.First, DialogGraphPorts.Input);
+                    exits.AddRange(trueBranch.Exits);
+                }
+                else
+                    exits.Add(new FlowExit(binding.Node, DialogGraphPorts.True));
+
+                BuildSequenceResult falseBranch = Build(
+                    conditional.FalseStatements,
+                    position + new Vector2(NodeSpacingX, NodeSpacingY * 0.5f),
+                    $"{label}.if_{index + 1}.false");
+
+                if (falseBranch.First != null)
+                {
+                    CreateWire(graphModel, binding.Node, DialogGraphPorts.False, falseBranch.First, DialogGraphPorts.Input);
+                    exits.AddRange(falseBranch.Exits);
+                }
+                else
+                    exits.Add(new FlowExit(binding.Node, DialogGraphPorts.False));
+
+                return new BuildSequenceResult(binding.Node, exits);
+            }
+
+            private void WireConditionalSectionTarget(
+                GtkNode conditionNode,
+                string portName,
+                string sectionId,
+                Vector2 origin,
+                string label)
+            {
+                BuildSequenceResult branch = BuildSection(sectionId, origin, label);
+
+                if (branch.First != null)
+                    CreateWire(graphModel, conditionNode, portName, branch.First, DialogGraphPorts.Input);
             }
 
             private BuildSequenceResult BuildSection(string sectionId, Vector2 origin, string label)
@@ -617,6 +769,8 @@ namespace cherrydev.Editor.GraphToolkit
             if (document == null)
                 return diagnostics;
 
+            VariablesConfig variablesConfig = document.CreateValidationVariablesConfig();
+
             foreach (DialogScriptPauseStatement pause in document.Pauses)
             {
                 if (!document.TryGetSection(pause.TargetSectionId, out _))
@@ -652,11 +806,80 @@ namespace cherrydev.Editor.GraphToolkit
                                 scriptPath,
                                 option.LineNumber));
                         }
+
+                        AddConditionDiagnostics(option.ConditionExpression, option.LineNumber, document, variablesConfig, scriptPath, diagnostics);
+                    }
+                }
+
+                if (statement is DialogScriptConditionalStatement conditional)
+                {
+                    AddConditionDiagnostics(conditional.ConditionExpression, conditional.LineNumber, document, variablesConfig, scriptPath, diagnostics);
+
+                    if (conditional.UsesSectionTargets)
+                    {
+                        if (!document.TryGetSection(conditional.TrueTargetSection, out _))
+                        {
+                            diagnostics.Add(DialogScriptDiagnostic.Error(
+                                "DIALOG_SCRIPT_MISSING_CONDITION_TARGET",
+                                $"Condition true target section '{conditional.TrueTargetSection}' does not exist.",
+                                scriptPath,
+                                conditional.LineNumber));
+                        }
+
+                        if (!document.TryGetSection(conditional.FalseTargetSection, out _))
+                        {
+                            diagnostics.Add(DialogScriptDiagnostic.Error(
+                                "DIALOG_SCRIPT_MISSING_CONDITION_TARGET",
+                                $"Condition false target section '{conditional.FalseTargetSection}' does not exist.",
+                                scriptPath,
+                                conditional.LineNumber));
+                        }
                     }
                 }
             }
 
             return diagnostics;
+        }
+
+        private static void AddConditionDiagnostics(
+            string conditionExpression,
+            int lineNumber,
+            DialogScriptDocument document,
+            VariablesConfig variablesConfig,
+            string scriptPath,
+            List<DialogScriptDiagnostic> diagnostics)
+        {
+            if (string.IsNullOrWhiteSpace(conditionExpression))
+                return;
+
+            if (!DialogConditionExpression.TryParse(conditionExpression, out DialogConditionExpression parsedExpression, out string parseError))
+            {
+                diagnostics.Add(DialogScriptDiagnostic.Error(
+                    "DIALOG_SCRIPT_INVALID_CONDITION",
+                    parseError,
+                    scriptPath,
+                    lineNumber));
+                return;
+            }
+
+            if (document.Variables.Count == 0)
+            {
+                diagnostics.Add(DialogScriptDiagnostic.Error(
+                    "DIALOG_SCRIPT_MISSING_VARIABLES",
+                    $"Condition '{conditionExpression}' requires @var declarations.",
+                    scriptPath,
+                    lineNumber));
+                return;
+            }
+
+            if (!parsedExpression.Validate(variablesConfig, out string validationError))
+            {
+                diagnostics.Add(DialogScriptDiagnostic.Error(
+                    "DIALOG_SCRIPT_INVALID_CONDITION",
+                    validationError,
+                    scriptPath,
+                    lineNumber));
+            }
         }
     }
 
@@ -667,6 +890,7 @@ namespace cherrydev.Editor.GraphToolkit
             DialogScriptDocument document = new();
             List<DialogScriptStatement> currentStatements = document.MainStatements;
             string currentSpeaker = string.Empty;
+            var ifStack = new Stack<DialogScriptIfParseContext>();
             string[] lines = (source ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
 
             for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
@@ -677,8 +901,30 @@ namespace cherrydev.Editor.GraphToolkit
                 if (ShouldIgnoreLine(line))
                     continue;
 
+                if (TryReadDirective(line, "@var", out string variablePayload))
+                {
+                    ParseVariableDeclaration(variablePayload, document, scriptPath, lineNumber);
+                    continue;
+                }
+
+                if (IsDirectiveKeyword(line, "@var"))
+                {
+                    AddMissingPayloadDiagnostic(document, scriptPath, lineNumber, "@var", "variable declaration");
+                    continue;
+                }
+
                 if (TryReadDirective(line, "@section", out string sectionId))
                 {
+                    if (ifStack.Count > 0)
+                    {
+                        document.AddDiagnostic(DialogScriptDiagnostic.Error(
+                            "DIALOG_SCRIPT_SECTION_IN_CONDITIONAL",
+                            "@section cannot appear inside an @if block. Move the section outside the block or use section-jump @if syntax.",
+                            scriptPath,
+                            lineNumber));
+                        continue;
+                    }
+
                     currentStatements = document.GetOrCreateSection(sectionId);
                     currentSpeaker = string.Empty;
                     continue;
@@ -687,6 +933,83 @@ namespace cherrydev.Editor.GraphToolkit
                 if (IsDirectiveKeyword(line, "@section"))
                 {
                     AddMissingPayloadDiagnostic(document, scriptPath, lineNumber, "@section", "section id");
+                    continue;
+                }
+
+                if (TryReadDirective(line, "@if", out string conditionPayload))
+                {
+                    if (TryParseConditionalSectionJump(
+                            conditionPayload,
+                            out string conditionExpression,
+                            out string trueTargetSection,
+                            out string falseTargetSection))
+                    {
+                        currentStatements.Add(new DialogScriptConditionalStatement(
+                            conditionExpression,
+                            trueTargetSection,
+                            falseTargetSection,
+                            lineNumber));
+                        continue;
+                    }
+
+                    var conditional = new DialogScriptConditionalStatement(conditionPayload.Trim(), lineNumber);
+                    currentStatements.Add(conditional);
+                    ifStack.Push(new DialogScriptIfParseContext(conditional, currentStatements, lineNumber));
+                    currentStatements = conditional.TrueStatements;
+                    continue;
+                }
+
+                if (IsDirectiveKeyword(line, "@if"))
+                {
+                    AddMissingPayloadDiagnostic(document, scriptPath, lineNumber, "@if", "condition expression");
+                    continue;
+                }
+
+                if (IsDirectiveKeyword(line, "@else"))
+                {
+                    if (ifStack.Count == 0)
+                    {
+                        document.AddDiagnostic(DialogScriptDiagnostic.Error(
+                            "DIALOG_SCRIPT_UNEXPECTED_ELSE",
+                            "@else has no matching @if.",
+                            scriptPath,
+                            lineNumber));
+                        continue;
+                    }
+
+                    DialogScriptIfParseContext context = ifStack.Pop();
+
+                    if (context.IsElseActive)
+                    {
+                        document.AddDiagnostic(DialogScriptDiagnostic.Error(
+                            "DIALOG_SCRIPT_DUPLICATE_ELSE",
+                            "@if block already has an @else branch.",
+                            scriptPath,
+                            lineNumber));
+                        ifStack.Push(context);
+                        continue;
+                    }
+
+                    context = context.ActivateElse();
+                    ifStack.Push(context);
+                    currentStatements = context.Conditional.FalseStatements;
+                    continue;
+                }
+
+                if (IsDirectiveKeyword(line, "@endif"))
+                {
+                    if (ifStack.Count == 0)
+                    {
+                        document.AddDiagnostic(DialogScriptDiagnostic.Error(
+                            "DIALOG_SCRIPT_UNEXPECTED_ENDIF",
+                            "@endif has no matching @if.",
+                            scriptPath,
+                            lineNumber));
+                        continue;
+                    }
+
+                    DialogScriptIfParseContext context = ifStack.Pop();
+                    currentStatements = context.ParentStatements;
                     continue;
                 }
 
@@ -767,6 +1090,16 @@ namespace cherrydev.Editor.GraphToolkit
                 }
             }
 
+            while (ifStack.Count > 0)
+            {
+                DialogScriptIfParseContext context = ifStack.Pop();
+                document.AddDiagnostic(DialogScriptDiagnostic.Error(
+                    "DIALOG_SCRIPT_MISSING_ENDIF",
+                    "@if block is missing a matching @endif.",
+                    scriptPath,
+                    context.LineNumber));
+            }
+
             return new DialogScriptParseResult(document);
         }
 
@@ -792,6 +1125,24 @@ namespace cherrydev.Editor.GraphToolkit
                     break;
 
                 string option = line.Substring(1).Trim();
+                string conditionExpression = string.Empty;
+
+                if (TryReadChoiceCondition(option, out string guardedCondition, out string guardedOption))
+                {
+                    conditionExpression = guardedCondition;
+                    option = guardedOption;
+                }
+                else if (option.StartsWith("[if ", StringComparison.Ordinal))
+                {
+                    document.AddDiagnostic(DialogScriptDiagnostic.Error(
+                        "DIALOG_SCRIPT_MALFORMED_CHOICE",
+                        $"Choice option '{option}' has an unterminated condition guard.",
+                        scriptPath,
+                        lineNumber));
+                    lineIndex++;
+                    continue;
+                }
+
                 int targetMarker = option.LastIndexOf("->", StringComparison.Ordinal);
 
                 if (targetMarker < 0)
@@ -819,11 +1170,188 @@ namespace cherrydev.Editor.GraphToolkit
                     continue;
                 }
 
-                choice.Choices.Add(new DialogScriptChoiceOption(text, target, lineNumber));
+                choice.Choices.Add(new DialogScriptChoiceOption(text, target, lineNumber, conditionExpression));
                 lineIndex++;
             }
 
             return lineIndex;
+        }
+
+        private static bool TryReadChoiceCondition(string option, out string conditionExpression, out string remainingOption)
+        {
+            conditionExpression = string.Empty;
+            remainingOption = option;
+
+            if (!option.StartsWith("[if ", StringComparison.Ordinal))
+                return false;
+
+            int closeIndex = option.IndexOf(']');
+
+            if (closeIndex < 0)
+                return false;
+
+            conditionExpression = option.Substring("[if ".Length, closeIndex - "[if ".Length).Trim();
+            remainingOption = option.Substring(closeIndex + 1).Trim();
+            return true;
+        }
+
+        private static bool TryParseConditionalSectionJump(
+            string payload,
+            out string conditionExpression,
+            out string trueTargetSection,
+            out string falseTargetSection)
+        {
+            conditionExpression = string.Empty;
+            trueTargetSection = string.Empty;
+            falseTargetSection = string.Empty;
+
+            int arrowIndex = payload.IndexOf("->", StringComparison.Ordinal);
+
+            if (arrowIndex < 0)
+                return false;
+
+            string condition = payload.Substring(0, arrowIndex).Trim();
+            string targetPayload = payload.Substring(arrowIndex + 2).Trim();
+            int elseIndex = targetPayload.IndexOf(" else ", StringComparison.Ordinal);
+
+            if (elseIndex < 0)
+                return false;
+
+            conditionExpression = condition;
+            trueTargetSection = targetPayload.Substring(0, elseIndex).Trim();
+            falseTargetSection = targetPayload.Substring(elseIndex + " else ".Length).Trim();
+            return !string.IsNullOrWhiteSpace(conditionExpression) &&
+                !string.IsNullOrWhiteSpace(trueTargetSection) &&
+                !string.IsNullOrWhiteSpace(falseTargetSection);
+        }
+
+        private static void ParseVariableDeclaration(
+            string payload,
+            DialogScriptDocument document,
+            string scriptPath,
+            int lineNumber)
+        {
+            int equalsIndex = payload.IndexOf('=');
+
+            if (equalsIndex < 0)
+            {
+                document.AddDiagnostic(DialogScriptDiagnostic.Error(
+                    "DIALOG_SCRIPT_MALFORMED_VARIABLE",
+                    "@var requires 'name:type = default'.",
+                    scriptPath,
+                    lineNumber));
+                return;
+            }
+
+            string nameAndType = payload.Substring(0, equalsIndex).Trim();
+            string valueText = payload.Substring(equalsIndex + 1).Trim();
+            int typeMarker = nameAndType.IndexOf(':');
+
+            if (typeMarker < 0)
+            {
+                document.AddDiagnostic(DialogScriptDiagnostic.Error(
+                    "DIALOG_SCRIPT_MALFORMED_VARIABLE",
+                    "@var requires an explicit type, for example '@var psyche:int = 100'.",
+                    scriptPath,
+                    lineNumber));
+                return;
+            }
+
+            string variableName = nameAndType.Substring(0, typeMarker).Trim();
+            string typeText = nameAndType.Substring(typeMarker + 1).Trim();
+
+            if (string.IsNullOrWhiteSpace(variableName) ||
+                !TryParseVariableType(typeText, out VariableType variableType) ||
+                !TryParseVariableDefault(valueText, variableType, out bool boolValue, out int intValue, out float floatValue, out string stringValue))
+            {
+                document.AddDiagnostic(DialogScriptDiagnostic.Error(
+                    "DIALOG_SCRIPT_MALFORMED_VARIABLE",
+                    $"Could not parse variable declaration '{payload}'.",
+                    scriptPath,
+                    lineNumber));
+                return;
+            }
+
+            var declaration = new DialogScriptVariableDeclaration(
+                variableName,
+                variableType,
+                boolValue,
+                intValue,
+                floatValue,
+                stringValue,
+                lineNumber);
+
+            if (!document.AddVariable(declaration))
+            {
+                document.AddDiagnostic(DialogScriptDiagnostic.Error(
+                    "DIALOG_SCRIPT_DUPLICATE_VARIABLE",
+                    $"Variable '{variableName}' is declared more than once.",
+                    scriptPath,
+                    lineNumber));
+            }
+        }
+
+        private static bool TryParseVariableType(string typeText, out VariableType variableType)
+        {
+            switch (typeText.Trim().ToLowerInvariant())
+            {
+                case "bool":
+                    variableType = VariableType.Bool;
+                    return true;
+                case "int":
+                    variableType = VariableType.Int;
+                    return true;
+                case "float":
+                    variableType = VariableType.Float;
+                    return true;
+                case "string":
+                    variableType = VariableType.String;
+                    return true;
+                default:
+                    variableType = VariableType.String;
+                    return false;
+            }
+        }
+
+        private static bool TryParseVariableDefault(
+            string valueText,
+            VariableType variableType,
+            out bool boolValue,
+            out int intValue,
+            out float floatValue,
+            out string stringValue)
+        {
+            boolValue = false;
+            intValue = 0;
+            floatValue = 0f;
+            stringValue = string.Empty;
+
+            switch (variableType)
+            {
+                case VariableType.Bool:
+                    return bool.TryParse(valueText, out boolValue);
+                case VariableType.Int:
+                    return int.TryParse(valueText, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out intValue);
+                case VariableType.Float:
+                    return float.TryParse(valueText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out floatValue);
+                case VariableType.String:
+                    stringValue = UnquoteString(valueText);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static string UnquoteString(string valueText)
+        {
+            if (valueText.Length >= 2 &&
+                ((valueText[0] == '"' && valueText[valueText.Length - 1] == '"') ||
+                 (valueText[0] == '\'' && valueText[valueText.Length - 1] == '\'')))
+            {
+                return valueText.Substring(1, valueText.Length - 2);
+            }
+
+            return valueText;
         }
 
         private static bool TryReadDirective(string line, string directive, out string value)
@@ -864,6 +1392,29 @@ namespace cherrydev.Editor.GraphToolkit
             line == "---" ||
             line.StartsWith("*", StringComparison.Ordinal) ||
             line.StartsWith("(", StringComparison.Ordinal);
+
+        private readonly struct DialogScriptIfParseContext
+        {
+            public DialogScriptIfParseContext(
+                DialogScriptConditionalStatement conditional,
+                List<DialogScriptStatement> parentStatements,
+                int lineNumber,
+                bool isElseActive = false)
+            {
+                Conditional = conditional;
+                ParentStatements = parentStatements;
+                LineNumber = lineNumber;
+                IsElseActive = isElseActive;
+            }
+
+            public DialogScriptConditionalStatement Conditional { get; }
+            public List<DialogScriptStatement> ParentStatements { get; }
+            public int LineNumber { get; }
+            public bool IsElseActive { get; }
+
+            public DialogScriptIfParseContext ActivateElse() =>
+                new(Conditional, ParentStatements, LineNumber, true);
+        }
     }
 
     internal sealed class DialogScriptDocument
@@ -871,10 +1422,13 @@ namespace cherrydev.Editor.GraphToolkit
         private readonly Dictionary<string, List<DialogScriptStatement>> sections = new(StringComparer.Ordinal);
         private readonly List<DialogScriptDiagnostic> diagnostics = new();
         private readonly List<DialogScriptPauseStatement> pauses = new();
+        private readonly List<DialogScriptVariableDeclaration> variables = new();
+        private readonly HashSet<string> variableNames = new(StringComparer.Ordinal);
 
         public List<DialogScriptStatement> MainStatements { get; } = new();
         public IReadOnlyList<DialogScriptDiagnostic> Diagnostics => diagnostics;
         public IReadOnlyList<DialogScriptPauseStatement> Pauses => pauses;
+        public IReadOnlyList<DialogScriptVariableDeclaration> Variables => variables;
 
         public List<DialogScriptStatement> GetOrCreateSection(string sectionId)
         {
@@ -907,12 +1461,38 @@ namespace cherrydev.Editor.GraphToolkit
         public IEnumerable<DialogScriptStatement> GetAllStatements()
         {
             foreach (DialogScriptStatement statement in MainStatements)
-                yield return statement;
+            {
+                foreach (DialogScriptStatement nested in FlattenStatement(statement))
+                    yield return nested;
+            }
 
             foreach (List<DialogScriptStatement> sectionStatements in sections.Values)
             {
                 foreach (DialogScriptStatement statement in sectionStatements)
-                    yield return statement;
+                {
+                    foreach (DialogScriptStatement nested in FlattenStatement(statement))
+                        yield return nested;
+                }
+            }
+        }
+
+        static IEnumerable<DialogScriptStatement> FlattenStatement(DialogScriptStatement statement)
+        {
+            yield return statement;
+
+            if (statement is not DialogScriptConditionalStatement conditional || conditional.UsesSectionTargets)
+                yield break;
+
+            foreach (DialogScriptStatement nested in conditional.TrueStatements)
+            {
+                foreach (DialogScriptStatement flattened in FlattenStatement(nested))
+                    yield return flattened;
+            }
+
+            foreach (DialogScriptStatement nested in conditional.FalseStatements)
+            {
+                foreach (DialogScriptStatement flattened in FlattenStatement(nested))
+                    yield return flattened;
             }
         }
 
@@ -926,6 +1506,48 @@ namespace cherrydev.Editor.GraphToolkit
         {
             if (pause != null)
                 pauses.Add(pause);
+        }
+
+        public bool AddVariable(DialogScriptVariableDeclaration variable)
+        {
+            if (variable == null || string.IsNullOrWhiteSpace(variable.Name))
+                return false;
+
+            if (!variableNames.Add(variable.Name))
+                return false;
+
+            variables.Add(variable);
+            return true;
+        }
+
+        public VariablesConfig CreateValidationVariablesConfig()
+        {
+            VariablesConfig variablesConfig = ScriptableObject.CreateInstance<VariablesConfig>();
+
+            foreach (DialogScriptVariableDeclaration declaration in variables)
+            {
+                var variable = new Variable(declaration.Name, declaration.Type, false);
+
+                switch (declaration.Type)
+                {
+                    case VariableType.Bool:
+                        variable.SetValue(declaration.BoolValue);
+                        break;
+                    case VariableType.Int:
+                        variable.SetValue(declaration.IntValue);
+                        break;
+                    case VariableType.Float:
+                        variable.SetValue(declaration.FloatValue);
+                        break;
+                    case VariableType.String:
+                        variable.SetValue(declaration.StringValue);
+                        break;
+                }
+
+                variablesConfig.AddVariable(variable);
+            }
+
+            return variablesConfig;
         }
     }
 
@@ -986,30 +1608,112 @@ namespace cherrydev.Editor.GraphToolkit
         public List<DialogScriptChoiceOption> Choices { get; } = new();
     }
 
+    internal sealed class DialogScriptConditionalStatement : DialogScriptStatement
+    {
+        public DialogScriptConditionalStatement(string conditionExpression, int lineNumber)
+            : base(lineNumber)
+        {
+            ConditionExpression = conditionExpression ?? string.Empty;
+            TrueStatements = new List<DialogScriptStatement>();
+            FalseStatements = new List<DialogScriptStatement>();
+        }
+
+        public DialogScriptConditionalStatement(
+            string conditionExpression,
+            string trueTargetSection,
+            string falseTargetSection,
+            int lineNumber)
+            : this(conditionExpression, lineNumber)
+        {
+            TrueTargetSection = trueTargetSection ?? string.Empty;
+            FalseTargetSection = falseTargetSection ?? string.Empty;
+            UsesSectionTargets = true;
+        }
+
+        public string ConditionExpression { get; }
+        public List<DialogScriptStatement> TrueStatements { get; }
+        public List<DialogScriptStatement> FalseStatements { get; }
+        public bool UsesSectionTargets { get; }
+        public string TrueTargetSection { get; }
+        public string FalseTargetSection { get; }
+    }
+
     internal sealed class DialogScriptChoiceOption
     {
-        public DialogScriptChoiceOption(string text, string targetSection, int lineNumber)
+        public DialogScriptChoiceOption(string text, string targetSection, int lineNumber, string conditionExpression = "")
         {
             Text = text ?? string.Empty;
             TargetSection = targetSection ?? string.Empty;
+            ConditionExpression = conditionExpression ?? string.Empty;
             LineNumber = lineNumber;
         }
 
         public string Text { get; }
         public string TargetSection { get; }
+        public string ConditionExpression { get; }
+        public int LineNumber { get; }
+    }
+
+    internal sealed class DialogScriptVariableDeclaration
+    {
+        public DialogScriptVariableDeclaration(
+            string name,
+            VariableType type,
+            bool boolValue,
+            int intValue,
+            float floatValue,
+            string stringValue,
+            int lineNumber)
+        {
+            Name = name ?? string.Empty;
+            Type = type;
+            BoolValue = boolValue;
+            IntValue = intValue;
+            FloatValue = floatValue;
+            StringValue = stringValue ?? string.Empty;
+            LineNumber = lineNumber;
+        }
+
+        public string Name { get; }
+        public VariableType Type { get; }
+        public bool BoolValue { get; }
+        public int IntValue { get; }
+        public float FloatValue { get; }
+        public string StringValue { get; }
         public int LineNumber { get; }
     }
 
     internal readonly struct BuildSequenceResult
     {
-        public BuildSequenceResult(GtkNode first, GtkNode last)
+        readonly FlowExit[] exits;
+
+        public BuildSequenceResult(GtkNode first, IEnumerable<FlowExit> exits)
         {
             First = first;
-            Last = last;
+            this.exits = exits?.ToArray() ?? Array.Empty<FlowExit>();
         }
 
         public GtkNode First { get; }
-        public GtkNode Last { get; }
+        public IReadOnlyList<FlowExit> Exits => exits ?? Array.Empty<FlowExit>();
+
+        public static BuildSequenceResult Empty => new(null, Array.Empty<FlowExit>());
+
+        public static BuildSequenceResult Single(GtkNode node, string portName) =>
+            node == null
+                ? Empty
+                : new BuildSequenceResult(node, new[] { new FlowExit(node, portName) });
+    }
+
+    internal readonly struct FlowExit
+    {
+        public FlowExit(GtkNode node, string portName)
+        {
+            Node = node;
+            PortName = portName ?? string.Empty;
+        }
+
+        public GtkNode Node { get; }
+        public string PortName { get; }
     }
 
     internal readonly struct AuthoringNodeBinding

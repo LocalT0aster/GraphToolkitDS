@@ -65,6 +65,7 @@ namespace cherrydev
 
         private readonly List<string> _boundFunctionNames = new();
         private readonly List<string> _boundFunctionPrefixes = new();
+        private readonly List<int> _visibleAnswerIndices = new();
 
         public bool IsActive { get; set; } = true;
 
@@ -346,6 +347,15 @@ namespace cherrydev
         public void SetVariableValue(string variableName, string value) =>
             _variablesHandler?.SetVariableValueDirect(variableName, value);
 
+        public string GetCurrentAnswerTextForDisplayIndex(int displayIndex)
+        {
+            if (CurrentAnswerNode == null)
+                return string.Empty;
+
+            int answerIndex = ResolveAnswerIndex(displayIndex);
+            return CurrentAnswerNode.GetAnswerText(answerIndex);
+        }
+
         /// <summary>
         /// This method is designed for ease of use. Calls a method 
         /// BindExternalFunction of the class DialogExternalFunctionsHandler
@@ -392,18 +402,21 @@ namespace cherrydev
         /// <param name="answerIndex">Index of the selected answer</param>
         public void SetCurrentNodeAndHandleDialogGraph(int answerIndex)
         {
-            if (CurrentAnswerNode != null && answerIndex >= 0 && answerIndex < CurrentAnswerNode.ChildNodes.Count)
+            int resolvedAnswerIndex = ResolveAnswerIndex(answerIndex);
+
+            if (CurrentAnswerNode != null && resolvedAnswerIndex >= 0 && resolvedAnswerIndex < CurrentAnswerNode.ChildNodes.Count)
             {
-                Node selectedNode = CurrentAnswerNode.ChildNodes[answerIndex];
+                Node selectedNode = CurrentAnswerNode.ChildNodes[resolvedAnswerIndex];
                 if (selectedNode != null)
                 {
                     HideExistingAnswerButtons();
+                    _visibleAnswerIndices.Clear();
                     _currentNode = selectedNode;
                     HandleDialogGraphCurrentNode(_currentNode);
                 }
                 else
                 {
-                    Debug.LogWarning($"No child node found at index {answerIndex}");
+                    Debug.LogWarning($"No child node found at answer index {resolvedAnswerIndex}");
                     EndDialog();
                 }
             }
@@ -503,6 +516,7 @@ namespace cherrydev
         {
             AnswerNode answerNode = (AnswerNode)currentNode;
             CurrentAnswerNode = answerNode;
+            RebuildVisibleAnswerIndices(answerNode);
 
             int amountOfActiveButtons = 0;
 
@@ -521,22 +535,18 @@ namespace cherrydev
 
             AnswerNodeActivated?.Invoke();
 
-            for (int i = 0; i < answerNode.ChildNodes.Count; i++)
+            for (int displayIndex = 0; displayIndex < _visibleAnswerIndices.Count; displayIndex++)
             {
-                if (answerNode.ChildNodes[i] != null)
-                {
-                    string answerText = answerNode.Answers[i];
+                int answerIndex = _visibleAnswerIndices[displayIndex];
+                string answerText = answerNode.GetAnswerText(answerIndex);
 
-                    if (_variablesHandler != null)
-                        answerText = DialogTextProcessor.ProcessText(answerText, _variablesHandler);
+                if (_variablesHandler != null)
+                    answerText = DialogTextProcessor.ProcessText(answerText, _variablesHandler);
 
-                    AnswerNodeSetUp?.Invoke(i, answerText);
-                    AnswerButtonSetUp?.Invoke(i, answerNode);
+                AnswerNodeSetUp?.Invoke(displayIndex, answerText);
+                AnswerButtonSetUp?.Invoke(displayIndex, answerNode);
 
-                    amountOfActiveButtons++;
-                }
-                else
-                    break;
+                amountOfActiveButtons++;
             }
 
             if (amountOfActiveButtons == 0)
@@ -590,7 +600,11 @@ namespace cherrydev
             bool conditionResult = variableConditionNode.EvaluateCondition(_variablesHandler);
 
             VariableConditionNodeActivated?.Invoke(variableConditionNode);
-            VariableConditionEvaluated?.Invoke(variableConditionNode.VariableName, conditionResult);
+            VariableConditionEvaluated?.Invoke(
+                !string.IsNullOrWhiteSpace(variableConditionNode.ConditionExpression)
+                    ? variableConditionNode.ConditionExpression
+                    : variableConditionNode.VariableName,
+                conditionResult);
 
             Node nextNode = null;
 
@@ -645,6 +659,7 @@ namespace cherrydev
         {
             _isDialogStarted = false;
             HideExistingAnswerButtons();
+            _visibleAnswerIndices.Clear();
 
             _dialogFinished?.Invoke(_variablesHandler);
             
@@ -877,17 +892,15 @@ namespace cherrydev
                 _existingAnswerButtonsRoot.SetActive(true);
 
             int activeCount = 0;
-            int buttonCount = Mathf.Min(_answerButtons.Length, answerNode.ChildNodes.Count);
-            for (int i = 0; i < buttonCount; i++)
+            int buttonCount = Mathf.Min(_answerButtons.Length, _visibleAnswerIndices.Count);
+            for (int displayIndex = 0; displayIndex < buttonCount; displayIndex++)
             {
-                if (answerNode.ChildNodes[i] == null)
-                    continue;
-
-                Button button = _answerButtons[i];
+                int answerIndex = _visibleAnswerIndices[displayIndex];
+                Button button = _answerButtons[displayIndex];
                 if (button == null)
                     continue;
 
-                string answerText = answerNode.Answers[i];
+                string answerText = answerNode.GetAnswerText(answerIndex);
                 if (_variablesHandler != null)
                     answerText = DialogTextProcessor.ProcessText(answerText, _variablesHandler);
 
@@ -895,9 +908,9 @@ namespace cherrydev
                 SetAnswerButtonColors(button);
                 SetAnswerButtonHoverHighlight(button);
 
-                int answerIndex = i;
                 button.onClick.RemoveAllListeners();
-                button.onClick.AddListener(() => SetCurrentNodeAndHandleDialogGraph(answerIndex));
+                int capturedDisplayIndex = displayIndex;
+                button.onClick.AddListener(() => SetCurrentNodeAndHandleDialogGraph(capturedDisplayIndex));
 
                 if (_activateAnswerButtonParents)
                     SetParentsActive(button.transform);
@@ -908,6 +921,38 @@ namespace cherrydev
             }
 
             return activeCount;
+        }
+
+        private void RebuildVisibleAnswerIndices(AnswerNode answerNode)
+        {
+            _visibleAnswerIndices.Clear();
+
+            if (answerNode == null)
+                return;
+
+            int answerCount = Mathf.Min(answerNode.ChildNodes.Count, answerNode.Answers.Count);
+
+            for (int answerIndex = 0; answerIndex < answerCount; answerIndex++)
+            {
+                if (answerNode.ChildNodes[answerIndex] == null)
+                    continue;
+
+                if (!answerNode.IsAnswerAvailable(answerIndex, _variablesHandler))
+                    continue;
+
+                _visibleAnswerIndices.Add(answerIndex);
+            }
+
+            if (_visibleAnswerIndices.Count == 0)
+                Debug.LogWarning("Answer node has no available answers.");
+        }
+
+        private int ResolveAnswerIndex(int displayIndex)
+        {
+            if (displayIndex >= 0 && displayIndex < _visibleAnswerIndices.Count)
+                return _visibleAnswerIndices[displayIndex];
+
+            return displayIndex;
         }
 
         private void HideExistingAnswerButtons()

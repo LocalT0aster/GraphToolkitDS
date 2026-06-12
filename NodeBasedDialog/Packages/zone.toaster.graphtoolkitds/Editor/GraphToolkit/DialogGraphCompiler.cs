@@ -212,14 +212,16 @@ namespace cherrydev.Editor.GraphToolkit
             int answerCount = DialogGraphValidator.GetAnswerCount(authoringNode);
             List<string> answers = new();
             List<string> answerKeys = new();
+            List<string> answerConditions = new();
 
             for (int i = 0; i < answerCount; i++)
             {
                 answers.Add(DialogGraphOptionReader.Read(authoringNode, DialogGraphOptions.AnswerTextPrefix + i, string.Empty));
                 answerKeys.Add(DialogGraphOptionReader.Read(authoringNode, DialogGraphOptions.AnswerKeyPrefix + i, string.Empty));
+                answerConditions.Add(DialogGraphOptionReader.Read(authoringNode, DialogGraphOptions.AnswerConditionPrefix + i, string.Empty));
             }
 
-            runtimeNode.Configure(answers, answerKeys);
+            runtimeNode.Configure(answers, answerKeys, answerConditions);
             return runtimeNode;
         }
 
@@ -248,6 +250,14 @@ namespace cherrydev.Editor.GraphToolkit
         private static VariableConditionNode CreateVariableConditionNode(DialogVariableConditionNode authoringNode)
         {
             VariableConditionNode runtimeNode = ScriptableObject.CreateInstance<VariableConditionNode>();
+            string conditionExpression = DialogGraphOptionReader.Read(authoringNode, DialogGraphOptions.ConditionExpression, string.Empty);
+
+            if (!string.IsNullOrWhiteSpace(conditionExpression))
+            {
+                runtimeNode.ConfigureExpression(conditionExpression);
+                return runtimeNode;
+            }
+
             runtimeNode.Configure(
                 DialogGraphOptionReader.Read(authoringNode, DialogGraphOptions.VariableName, string.Empty),
                 DialogGraphOptionReader.Read(authoringNode, DialogGraphOptions.ConditionType, ConditionType.Equal),

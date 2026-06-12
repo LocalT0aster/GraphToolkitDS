@@ -22,8 +22,10 @@ Alex:
 
 @effect customer.show_qr
 
+@var can_tolerate:bool = true
+
 @choice
-- Stay polite -> polite
+- [if can_tolerate] Stay polite -> polite
 - Be rude -> rude
 
 @section polite
@@ -50,6 +52,8 @@ Generated assets use the source file name:
 - The authoring graph generates `Name_Runtime.asset`.
 - `@pause target` also generates `Name__target.dialoggtk` and
   `Name__target_Runtime.asset` for the pause continuation.
+- If the script declares variables with `@var`, the compiler also generates or
+  updates `Name_Variables.asset` and assigns it to the generated graph settings.
 
 Folder rules:
 
@@ -174,6 +178,141 @@ Rules:
 - `@effect` without a payload reports `DIALOG_SCRIPT_MISSING_DIRECTIVE_PAYLOAD`.
 - Project-specific effect command formats belong in the consuming game's docs.
 
+### Variable Declaration
+
+```text
+@var variable_name:type = default_value
+```
+
+Declares a dialogue variable used by conditions, text interpolation, and runtime
+game integrations.
+
+Supported types:
+
+- `bool`: default must be `true` or `false`.
+- `int`: default must be an invariant-culture integer.
+- `float`: default must be an invariant-culture floating-point number.
+- `string`: default is any text after `=`, optionally wrapped in single or double
+  quotes. The outer quotes are removed.
+
+Rules:
+
+- Variable names are exact and case-sensitive.
+- Variable names may contain letters, digits, `_`, and `.`. They must start with a
+  letter, `_`, or `.`.
+- Every condition variable must be declared with `@var` in the same source file.
+- Duplicate variable declarations report `DIALOG_SCRIPT_DUPLICATE_VARIABLE`.
+- Malformed declarations report `DIALOG_SCRIPT_MALFORMED_VARIABLE`.
+- `@var` without a payload reports `DIALOG_SCRIPT_MISSING_DIRECTIVE_PAYLOAD`.
+
+Examples:
+
+```text
+@var psyche:int = 100
+@var can_tolerate:bool = true
+@var quest.stage:int = 2
+@var client_name:string = "Nikolai"
+```
+
+Runtime note: generated variables are copied per `DialogVariablesHandler`
+instance, so ordinary dialogue runs do not mutate the generated
+`Name_Variables.asset`. Variables marked as persistent in authored assets still
+save to `PlayerPrefs`.
+
+### Condition Expression
+
+Conditions are structured expressions. They are not arbitrary script code.
+
+Supported operands:
+
+- Declared variables.
+- Boolean literals: `true`, `false`.
+- Number literals: `10`, `-5`, `2.5`.
+- String literals wrapped in single or double quotes.
+
+Supported operators, from highest to lowest precedence:
+
+| Operator | Meaning |
+| --- | --- |
+| `!`, `not` | Boolean NOT |
+| `==`, `!=`, `<`, `<=`, `>`, `>=` | Comparison |
+| `&&`, `and` | Boolean AND |
+| `||`, `or` | Boolean OR |
+
+Parentheses are supported.
+
+Type rules:
+
+- The final expression must evaluate to `bool`.
+- `&&`, `and`, `||`, and `or` require boolean operands.
+- `!` and `not` require one boolean operand.
+- Numeric variables and numeric literals can use all comparison operators.
+- `bool` and `string` values can only use `==` and `!=`.
+- Comparing different types is invalid.
+
+Examples:
+
+```text
+psyche < 50
+quest.stage == 2
+can_tolerate and psyche >= 50
+not can_tolerate
+client_name == "Nikolai"
+```
+
+Invalid examples:
+
+```text
+psyche and true
+client_name < "Z"
+psyche == "low"
+```
+
+Invalid condition syntax or type usage reports `DIALOG_SCRIPT_INVALID_CONDITION`.
+Using a condition without any `@var` declarations reports
+`DIALOG_SCRIPT_MISSING_VARIABLES`.
+
+### Conditional Flow
+
+Inline conditional blocks:
+
+```text
+@if psyche < 50
+Narrator:
+> You feel the pressure closing in.
+@else
+Narrator:
+> You keep yourself together.
+@endif
+```
+
+Rules:
+
+- `@if condition` starts an inline conditional block.
+- `@else` is optional.
+- `@endif` is required.
+- Inline condition branches rejoin the next statement after `@endif`.
+- Nested `@if` blocks are supported.
+- `@section` cannot appear inside an inline `@if` block. Move sections outside
+  the block or use section-jump syntax.
+- Missing or unexpected `@else` and `@endif` lines report deterministic
+  diagnostics.
+
+Section-jump conditional:
+
+```text
+@if quest.stage == 2 -> stage_2 else fallback
+```
+
+Rules:
+
+- The syntax is exactly `@if condition -> true_section else false_section`.
+- The `else` keyword is lowercase and must be surrounded by spaces.
+- Both target sections must exist.
+- A section-jump condition is terminal in its sequence, like `@choice`, unless a
+  `@pause` stops the sequence first.
+- Missing target sections report `DIALOG_SCRIPT_MISSING_CONDITION_TARGET`.
+
 ### Function
 
 ```text
@@ -213,6 +352,11 @@ Rules:
 - Text after the last `->` becomes the target section id.
 - Missing `->`, empty answer text, or empty target reports
   `DIALOG_SCRIPT_MALFORMED_CHOICE`.
+- A choice option may start with a guard: `[if condition]`.
+- Guarded choices are hidden at runtime when their condition evaluates to `false`.
+- A malformed guard reports `DIALOG_SCRIPT_MALFORMED_CHOICE`.
+- Guard conditions follow the same syntax and validation rules as `@if`
+  conditions.
 - Each target section must exist, or validation reports
   `DIALOG_SCRIPT_MISSING_CHOICE_TARGET`.
 
@@ -223,6 +367,16 @@ Because the last `->` is used, answer text can contain earlier arrows:
 ```
 
 The answer text is `Ask about A -> B` and the target is `ask_about_b`.
+
+Guarded choice example:
+
+```text
+@choice
+- [if can_tolerate] Stay quiet -> tolerate
+- Snap -> snap
+```
+
+If every choice is hidden at runtime, the dialogue ends and a warning is logged.
 
 Compiler limits:
 
@@ -264,10 +418,13 @@ line-oriented and follows the rules above.
 ```text
 script          = line*
 line            = ignored
+                | variable
                 | section
                 | effect
                 | function
                 | pause
+                | if_block
+                | if_section_jump
                 | choice
                 | speaker
                 | sentence
@@ -282,25 +439,53 @@ ignored         = blank
 
 speaker         = any_text_except_leading_gt ":"
 sentence        = ">" non_empty_text
+variable        = "@var" whitespace variable_name ":" variable_type whitespace? "=" whitespace? default_value
 section         = "@section" whitespace non_empty_payload
 effect          = "@effect" whitespace non_empty_payload
 function        = "@function" whitespace non_empty_payload
 pause           = "@pause" whitespace non_empty_payload
+if_block        = "@if" whitespace condition line* ("@else" line*)? "@endif"
+if_section_jump = "@if" whitespace condition whitespace "->" whitespace section_id whitespace "else" whitespace section_id
 choice          = "@choice" choice_option*
-choice_option   = "-" non_empty_text "->" non_empty_section_id
+choice_option   = "-" whitespace? guarded_text "->" non_empty_section_id
+guarded_text    = ("[if" whitespace condition "]")? non_empty_text
 unknown_directive = "@" any_text
 ```
 
 `whitespace` after directive names may be spaces or tabs. Directive names without a
 payload are accepted as directive keywords and then reported as missing payloads.
 
+Condition grammar:
+
+```text
+condition       = or_expression
+or_expression   = and_expression (("||" | "or") and_expression)*
+and_expression  = unary_expression (("&&" | "and") unary_expression)*
+unary_expression = ("!" | "not") unary_expression | comparison
+comparison      = primary (("==" | "!=" | "<" | "<=" | ">" | ">=") primary)?
+primary         = variable_name | bool | number | string | "(" condition ")"
+```
+
+This grammar is intentionally small. Project-specific game commands should live in
+`@effect`, not inside conditions.
+
 ## Diagnostics
 
 | Code | Severity | Meaning |
 | --- | --- | --- |
 | `DIALOG_SCRIPT_UNKNOWN_DIRECTIVE` | Error | A trimmed line starts with `@` but is not a supported directive. |
-| `DIALOG_SCRIPT_MISSING_DIRECTIVE_PAYLOAD` | Error | `@section`, `@effect`, `@function`, or `@pause` has no payload. |
-| `DIALOG_SCRIPT_MALFORMED_CHOICE` | Error | A choice option is missing `->`, answer text, or target section. |
+| `DIALOG_SCRIPT_MISSING_DIRECTIVE_PAYLOAD` | Error | `@var`, `@section`, `@effect`, `@function`, `@pause`, or `@if` has no payload. |
+| `DIALOG_SCRIPT_MALFORMED_VARIABLE` | Error | A variable declaration is not `name:type = default` or has an invalid type/default value. |
+| `DIALOG_SCRIPT_DUPLICATE_VARIABLE` | Error | A variable is declared more than once. |
+| `DIALOG_SCRIPT_INVALID_CONDITION` | Error | A condition has invalid syntax, uses an undeclared variable, compares incompatible types, or does not evaluate to `bool`. |
+| `DIALOG_SCRIPT_MISSING_VARIABLES` | Error | A script uses a condition but declares no variables. |
+| `DIALOG_SCRIPT_SECTION_IN_CONDITIONAL` | Error | `@section` appears inside an inline `@if` block. |
+| `DIALOG_SCRIPT_UNEXPECTED_ELSE` | Error | `@else` has no matching `@if`. |
+| `DIALOG_SCRIPT_DUPLICATE_ELSE` | Error | An inline `@if` block has more than one `@else`. |
+| `DIALOG_SCRIPT_UNEXPECTED_ENDIF` | Error | `@endif` has no matching `@if`. |
+| `DIALOG_SCRIPT_MISSING_ENDIF` | Error | An inline `@if` block was not closed. |
+| `DIALOG_SCRIPT_MISSING_CONDITION_TARGET` | Error | A section-jump condition targets a section that does not exist. |
+| `DIALOG_SCRIPT_MALFORMED_CHOICE` | Error | A choice option is missing `->`, answer text, target section, or has a malformed guard. |
 | `DIALOG_SCRIPT_MISSING_CHOICE_TARGET` | Error | A choice option targets a section that does not exist. |
 | `DIALOG_SCRIPT_MISSING_PAUSE_TARGET` | Error | A pause targets a section that does not exist. |
 | `DIALOG_SCRIPT_VALIDATOR_CREATE_FAILED` | Warning | A custom external function validator could not be constructed. |

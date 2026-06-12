@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace cherrydev.Editor.GraphToolkit.Tests
 {
@@ -286,6 +287,136 @@ namespace cherrydev.Editor.GraphToolkit.Tests
 
             Assert.IsTrue(diagnostic.IsError);
             Assert.AreEqual(2, diagnostic.LineNumber);
+        }
+
+        [Test]
+        public void ConditionExpressionEvaluatesAndOrNotAliases()
+        {
+            VariablesConfig config = CreateVariables(
+                new Variable("psyche", VariableType.Int, false),
+                new Variable("can_tolerate", VariableType.Bool, false));
+            config.GetVariable("psyche").SetValue(45);
+            config.GetVariable("can_tolerate").SetValue(false);
+
+            Assert.IsTrue(DialogConditionExpression.TryParse(
+                "psyche < 50 and not can_tolerate",
+                out DialogConditionExpression expression,
+                out string error), error);
+
+            var handler = new DialogVariablesHandler(config);
+
+            Assert.IsTrue(expression.Evaluate(handler));
+            Assert.IsTrue(expression.Validate(config, out error), error);
+        }
+
+        [Test]
+        public void DialogVariablesHandlerUsesRuntimeCopyOfVariables()
+        {
+            VariablesConfig config = CreateVariables(new Variable("can_tolerate", VariableType.Bool, false));
+            config.GetVariable("can_tolerate").SetValue(true);
+
+            var firstHandler = new DialogVariablesHandler(config);
+            firstHandler.SetVariableValue("can_tolerate", false);
+
+            var secondHandler = new DialogVariablesHandler(config);
+
+            Assert.IsTrue(secondHandler.GetVariableValue<bool>("can_tolerate"));
+            Assert.IsTrue(config.GetVariable("can_tolerate").GetBoolValue());
+        }
+
+        [Test]
+        public void ParserReadsVariablesAndInlineConditionalBlocks()
+        {
+            const string source =
+                "@var psyche:int = 100\n" +
+                "@if psyche < 50\n" +
+                "Alex:\n" +
+                "> Low.\n" +
+                "@else\n" +
+                "Alex:\n" +
+                "> Fine.\n" +
+                "@endif";
+
+            DialogScriptParseResult parseResult = DialogScriptParser.Parse(source, ScriptPath);
+
+            Assert.IsFalse(parseResult.Diagnostics.Any(diagnostic => diagnostic.IsError));
+            Assert.AreEqual(1, parseResult.Document.Variables.Count);
+            Assert.IsInstanceOf<DialogScriptConditionalStatement>(parseResult.Document.MainStatements.Single());
+
+            var conditional = (DialogScriptConditionalStatement)parseResult.Document.MainStatements.Single();
+
+            Assert.AreEqual("psyche < 50", conditional.ConditionExpression);
+            Assert.AreEqual(1, conditional.TrueStatements.OfType<DialogScriptSentenceStatement>().Count());
+            Assert.AreEqual(1, conditional.FalseStatements.OfType<DialogScriptSentenceStatement>().Count());
+        }
+
+        [Test]
+        public void ParserReadsConditionalChoiceGuards()
+        {
+            const string source =
+                "@var can_tolerate:bool = true\n" +
+                "@choice\n" +
+                "- [if can_tolerate] Tolerate -> tolerate\n" +
+                "- Snap -> snap\n" +
+                "@section tolerate\n" +
+                "> Tolerated.\n" +
+                "@section snap\n" +
+                "> Snapped.";
+
+            DialogScriptParseResult parseResult = DialogScriptParser.Parse(source, ScriptPath);
+            var choice = (DialogScriptChoiceStatement)parseResult.Document.MainStatements.Single();
+
+            Assert.AreEqual("can_tolerate", choice.Choices[0].ConditionExpression);
+            Assert.AreEqual("Tolerate", choice.Choices[0].Text);
+            Assert.AreEqual(string.Empty, choice.Choices[1].ConditionExpression);
+            Assert.IsFalse(DialogScriptCompiler.ValidateSource(source, ScriptPath).Any(diagnostic => diagnostic.IsError));
+        }
+
+        [Test]
+        public void ParserReadsConditionalSectionJump()
+        {
+            const string source =
+                "@var questStage:int = 2\n" +
+                "@if questStage == 2 -> stage_2 else fallback\n" +
+                "@section stage_2\n" +
+                "> Stage 2.\n" +
+                "@section fallback\n" +
+                "> Fallback.";
+
+            DialogScriptParseResult parseResult = DialogScriptParser.Parse(source, ScriptPath);
+            var conditional = (DialogScriptConditionalStatement)parseResult.Document.MainStatements.Single();
+
+            Assert.IsTrue(conditional.UsesSectionTargets);
+            Assert.AreEqual("questStage == 2", conditional.ConditionExpression);
+            Assert.AreEqual("stage_2", conditional.TrueTargetSection);
+            Assert.AreEqual("fallback", conditional.FalseTargetSection);
+            Assert.IsFalse(DialogScriptCompiler.ValidateSource(source, ScriptPath).Any(diagnostic => diagnostic.IsError));
+        }
+
+        [Test]
+        public void ValidateSourceReportsUnknownConditionVariables()
+        {
+            IReadOnlyList<DialogScriptDiagnostic> diagnostics = DialogScriptCompiler.ValidateSource(
+                "@var psyche:int = 100\n" +
+                "@if missing_flag\n" +
+                "> Hidden.\n" +
+                "@endif",
+                ScriptPath);
+
+            DialogScriptDiagnostic diagnostic = diagnostics.Single(item => item.Code == "DIALOG_SCRIPT_INVALID_CONDITION");
+
+            Assert.IsTrue(diagnostic.IsError);
+            Assert.AreEqual(2, diagnostic.LineNumber);
+        }
+
+        static VariablesConfig CreateVariables(params Variable[] variables)
+        {
+            VariablesConfig config = ScriptableObject.CreateInstance<VariablesConfig>();
+
+            foreach (Variable variable in variables)
+                config.AddVariable(variable);
+
+            return config;
         }
     }
 

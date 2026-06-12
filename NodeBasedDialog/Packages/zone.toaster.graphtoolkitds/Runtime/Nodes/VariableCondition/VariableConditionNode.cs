@@ -11,6 +11,7 @@ namespace cherrydev
     public class VariableConditionNode : Node
     {
         [SerializeField] private string _variableName = "";
+        [SerializeField] private string _conditionExpression = "";
         [SerializeField] private ConditionType _conditionType = ConditionType.Equal;
 
         [SerializeField] private bool _boolTargetValue;
@@ -24,6 +25,7 @@ namespace cherrydev
         public Node FalseChildNode;
 
         public string VariableName => _variableName;
+        public string ConditionExpression => _conditionExpression;
         public ConditionType Condition => _conditionType;
         public bool BoolTargetValue => _boolTargetValue;
         public int IntTargetValue => _intTargetValue;
@@ -39,11 +41,18 @@ namespace cherrydev
             string stringTargetValue)
         {
             _variableName = variableName ?? string.Empty;
+            _conditionExpression = string.Empty;
             _conditionType = conditionType;
             _boolTargetValue = boolTargetValue;
             _intTargetValue = intTargetValue;
             _floatTargetValue = floatTargetValue;
             _stringTargetValue = stringTargetValue ?? string.Empty;
+        }
+
+        public void ConfigureExpression(string conditionExpression)
+        {
+            _conditionExpression = conditionExpression ?? string.Empty;
+            _variableName = string.Empty;
         }
 
         /// <summary>
@@ -53,6 +62,17 @@ namespace cherrydev
         /// <returns>True if condition is met, false otherwise</returns>
         public bool EvaluateCondition(DialogVariablesHandler variablesHandler)
         {
+            if (!string.IsNullOrWhiteSpace(_conditionExpression))
+            {
+                if (!DialogConditionExpression.TryParse(_conditionExpression, out DialogConditionExpression expression, out string error))
+                {
+                    Debug.LogWarning($"Invalid condition expression '{_conditionExpression}': {error}");
+                    return false;
+                }
+
+                return expression.Evaluate(variablesHandler);
+            }
+
             if (string.IsNullOrEmpty(_variableName))
             {
                 Debug.LogWarning("Variable name is empty in VariableConditionNode");
@@ -151,6 +171,9 @@ namespace cherrydev
 
         private string GetConditionDescription()
         {
+            if (!string.IsNullOrWhiteSpace(_conditionExpression))
+                return _conditionExpression;
+
             if (string.IsNullOrEmpty(_variableName))
                 return "No variable selected";
 
@@ -210,11 +233,20 @@ namespace cherrydev
             DrawVariableSelection();
             DrawConditionSelection();
             DrawTargetValueField();
+            DrawExpressionField();
 
             EditorGUILayout.Space(3);
             DrawConditionPreview();
 
             GUILayout.EndArea();
+        }
+
+        private void DrawExpressionField()
+        {
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Expression", GUILayout.Width(LabelWidth));
+            _conditionExpression = EditorGUILayout.TextField(_conditionExpression, GUILayout.Width(FieldWidth + 40f));
+            EditorGUILayout.EndHorizontal();
         }
 
         /// <summary>

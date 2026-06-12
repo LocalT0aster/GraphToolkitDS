@@ -69,8 +69,7 @@ namespace cherrydev.Editor.GraphToolkit
                     ValidateAnswerNode(answerNode, issues);
                     break;
                 case DialogVariableConditionNode conditionNode:
-                    ValidateSingleOutput(conditionNode, DialogGraphPorts.True, "True", true, issues);
-                    ValidateSingleOutput(conditionNode, DialogGraphPorts.False, "False", true, issues);
+                    ValidateConditionNode(conditionNode, issues);
                     break;
                 case DialogSentenceNode sentenceNode:
                     ValidateSingleOutput(sentenceNode, DialogGraphPorts.Next, "Next", false, issues);
@@ -128,7 +127,32 @@ namespace cherrydev.Editor.GraphToolkit
 
                 if (targets[0] is DialogAnswerNode)
                     issues.Add(new DialogGraphIssue("Answer nodes cannot connect directly to other Answer nodes.", true, answerNode));
+
+                string condition = DialogGraphOptionReader.Read(answerNode, DialogGraphOptions.AnswerConditionPrefix + i, string.Empty);
+                if (!string.IsNullOrWhiteSpace(condition) &&
+                    !DialogConditionExpression.TryParse(condition, out _, out string conditionError))
+                {
+                    issues.Add(new DialogGraphIssue($"Answer {i + 1} condition is invalid: {conditionError}", true, answerNode));
+                }
             }
+        }
+
+        private static void ValidateConditionNode(DialogVariableConditionNode conditionNode, List<DialogGraphIssue> issues)
+        {
+            ValidateSingleOutput(conditionNode, DialogGraphPorts.True, "True", false, issues);
+            ValidateSingleOutput(conditionNode, DialogGraphPorts.False, "False", false, issues);
+
+            string conditionExpression = DialogGraphOptionReader.Read(conditionNode, DialogGraphOptions.ConditionExpression, string.Empty);
+            if (!string.IsNullOrWhiteSpace(conditionExpression))
+            {
+                if (!DialogConditionExpression.TryParse(conditionExpression, out _, out string error))
+                    issues.Add(new DialogGraphIssue($"Condition expression is invalid: {error}", true, conditionNode));
+
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(DialogGraphOptionReader.Read(conditionNode, DialogGraphOptions.VariableName, string.Empty)))
+                issues.Add(new DialogGraphIssue("Variable Condition node has no variable name or expression.", true, conditionNode));
         }
 
         private static void ValidateSingleOutput(

@@ -17,6 +17,7 @@ namespace cherrydev
 
         public List<string> Answers = new();
         public List<string> AnswerKeys = new();
+        public List<string> AnswerConditions = new();
 
         public List<Node> ParentNodes = new();
         public List<Node> ChildNodes = new();
@@ -62,13 +63,47 @@ namespace cherrydev
             return Answers[index];
         }
 
-        public void Configure(IReadOnlyList<string> answers, IReadOnlyList<string> answerKeys = null)
+        public string GetAnswerCondition(int index)
+        {
+            if (index < 0 || index >= AnswerConditions.Count)
+                return string.Empty;
+
+            return AnswerConditions[index] ?? string.Empty;
+        }
+
+        public bool IsAnswerAvailable(int index, DialogVariablesHandler variablesHandler)
+        {
+            string condition = GetAnswerCondition(index);
+
+            if (string.IsNullOrWhiteSpace(condition))
+                return true;
+
+            if (variablesHandler == null)
+            {
+                Debug.LogWarning($"Answer condition '{condition}' cannot be evaluated without dialog variables.");
+                return false;
+            }
+
+            if (!DialogConditionExpression.TryParse(condition, out DialogConditionExpression expression, out string error))
+            {
+                Debug.LogWarning($"Invalid answer condition '{condition}': {error}");
+                return false;
+            }
+
+            return expression.Evaluate(variablesHandler);
+        }
+
+        public void Configure(
+            IReadOnlyList<string> answers,
+            IReadOnlyList<string> answerKeys = null,
+            IReadOnlyList<string> answerConditions = null)
         {
             Answers = answers == null || answers.Count == 0
                 ? new List<string> { string.Empty }
                 : new List<string>(answers);
 
             AnswerKeys = new List<string>();
+            AnswerConditions = new List<string>();
 
             if (answerKeys != null)
             {
@@ -78,6 +113,15 @@ namespace cherrydev
 
             while (AnswerKeys.Count < Answers.Count)
                 AnswerKeys.Add(string.Empty);
+
+            if (answerConditions != null)
+            {
+                for (int i = 0; i < answerConditions.Count && i < Answers.Count; i++)
+                    AnswerConditions.Add(answerConditions[i] ?? string.Empty);
+            }
+
+            while (AnswerConditions.Count < Answers.Count)
+                AnswerConditions.Add(string.Empty);
 
             EnsureChildSlots(Answers.Count);
         }
@@ -173,6 +217,9 @@ namespace cherrydev
             }
             else
                 _amountOfAnswers = Answers.Count;
+
+            while (AnswerConditions.Count < Answers.Count)
+                AnswerConditions.Add(string.Empty);
         }
 
         /// <summary>
@@ -197,6 +244,15 @@ namespace cherrydev
                 GUILayout.Label(fallbackTexture, GUILayout.Width(LabelFieldSpace), GUILayout.Height(LabelFieldSpace));
             
             EditorGUILayout.EndHorizontal();
+
+            while (AnswerConditions.Count < Answers.Count)
+                AnswerConditions.Add(string.Empty);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("if", GUILayout.Width(LabelFieldSpace));
+            AnswerConditions[answerNumber - 1] = EditorGUILayout.TextField(AnswerConditions[answerNumber - 1],
+                GUILayout.Width(TextFieldWidth + LabelFieldSpace));
+            EditorGUILayout.EndHorizontal();
         }
 
         private void DrawAnswerNodeButtons()
@@ -215,6 +271,7 @@ namespace cherrydev
         {
             _amountOfAnswers++;
             Answers.Add(string.Empty);
+            AnswerConditions.Add(string.Empty);
             _currentAnswerNodeHeight += AdditionalAnswerNodeHeight;
         }
 
@@ -227,6 +284,10 @@ namespace cherrydev
                 return;
 
             Answers.RemoveAt(_amountOfAnswers - 1);
+            if (AnswerKeys.Count >= _amountOfAnswers)
+                AnswerKeys.RemoveAt(_amountOfAnswers - 1);
+            if (AnswerConditions.Count >= _amountOfAnswers)
+                AnswerConditions.RemoveAt(_amountOfAnswers - 1);
 
             if (ChildNodes.Count == _amountOfAnswers)
             {

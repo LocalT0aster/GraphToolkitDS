@@ -78,6 +78,8 @@ The full deterministic format specification is in `Documentation~/DialogScriptFo
 
 `@effect` creates an external function node named `effect:<commands>`. Runtime code can handle command-style effects with `DialogBehaviour.BindExternalFunctionPrefix("effect:", handler)`.
 
+Scripts can declare dialogue variables with `@var`, branch with `@if`/`@else`/`@endif`, jump to sections with `@if condition -> true_section else false_section`, and hide choices with `- [if condition] Answer -> section`. Conditions use a small structured expression grammar, not arbitrary script strings.
+
 Legacy `DialogNodeGraph` assets can still be opened with `Window > Dialog Node Based Editor (Legacy)`. Use `Tools > Dialog System > Migrate Legacy Dialog Graphs` to create a migration manifest and empty Graph Toolkit authoring graph.
 
 ## Samples

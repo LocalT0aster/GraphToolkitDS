@@ -11,6 +11,40 @@ namespace cherrydev
         
         public List<Variable> Variables => _variables;
 
+        public VariablesConfig CreateRuntimeCopy()
+        {
+            VariablesConfig copy = CreateInstance<VariablesConfig>();
+            copy.name = $"{name}_Runtime";
+
+            foreach (Variable variable in _variables)
+            {
+                if (variable == null)
+                    continue;
+
+                var variableCopy = new Variable(variable.Name, variable.Type, variable.SaveToPrefs);
+
+                switch (variable.Type)
+                {
+                    case VariableType.Bool:
+                        variableCopy.SetValue(variable.GetBoolValue());
+                        break;
+                    case VariableType.Int:
+                        variableCopy.SetValue(variable.GetIntValue());
+                        break;
+                    case VariableType.Float:
+                        variableCopy.SetValue(variable.GetFloatValue());
+                        break;
+                    case VariableType.String:
+                        variableCopy.SetValue(variable.GetStringValue());
+                        break;
+                }
+
+                copy.AddVariable(variableCopy);
+            }
+
+            return copy;
+        }
+
         public void Initialize()
         {
             foreach (Variable variable in _variables)
