@@ -53,6 +53,11 @@ namespace cherrydev
         {
             _conditionExpression = conditionExpression ?? string.Empty;
             _variableName = string.Empty;
+            _conditionType = ConditionType.Equal;
+            _boolTargetValue = false;
+            _intTargetValue = 0;
+            _floatTargetValue = 0f;
+            _stringTargetValue = string.Empty;
         }
 
         /// <summary>

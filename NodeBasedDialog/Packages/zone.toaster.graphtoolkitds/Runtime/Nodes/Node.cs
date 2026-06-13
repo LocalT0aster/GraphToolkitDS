@@ -14,9 +14,15 @@ namespace cherrydev
         [HideInInspector] public bool IsDragging;
         [HideInInspector] public bool IsSelected;
 
+        [SerializeField, HideInInspector] private string _compilerSourceKey;
+
         protected float StandardHeight;
 
+        public string CompilerSourceKey => _compilerSourceKey ?? string.Empty;
+
         public void AssignNodeGraph(DialogNodeGraph nodeGraph) => NodeGraph = nodeGraph;
+
+        public void AssignCompilerSourceKey(string sourceKey) => _compilerSourceKey = sourceKey ?? string.Empty;
 
         /// <summary>
         /// Gets the table name from the node graph asset name

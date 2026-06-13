@@ -53,6 +53,8 @@ namespace cherrydev.Editor.GraphToolkit
         public const string IntValue = "intValue";
         public const string FloatValue = "floatValue";
         public const string StringValue = "stringValue";
+
+        public const string CompilerSourceKey = "compilerSourceKey";
     }
 
     public sealed class DialogFlow

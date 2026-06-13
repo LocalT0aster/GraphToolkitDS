@@ -74,19 +74,39 @@ namespace cherrydev.Editor.GraphToolkit
             }
         }
 
-        private static void CompileGraphIfPresent(string graphPath)
+        internal static bool CompileGraphIfPresent(string graphPath)
         {
             if (AssetDatabase.LoadMainAssetAtPath(graphPath) == null)
-                return;
+                return false;
+
+            if (IsGeneratedFromDialogScript(graphPath))
+            {
+                Debug.Log($"Dialog graph auto-compile skipped generated script graph '{graphPath}'.");
+                return false;
+            }
 
             try
             {
                 DialogGraphCompiler.CompileToRuntimeAsset(graphPath);
+                return true;
             }
             catch (Exception exception)
             {
                 Debug.LogWarning($"Dialog graph auto-compile skipped '{graphPath}': {exception.Message}");
+                return false;
             }
+        }
+
+        private static bool IsGeneratedFromDialogScript(string graphPath)
+        {
+            string runtimePath = DialogGraphCompiler.GetRuntimeAssetPath(graphPath);
+            DialogNodeGraph runtimeGraph = AssetDatabase.LoadAssetAtPath<DialogNodeGraph>(runtimePath);
+
+            return runtimeGraph != null &&
+                string.Equals(
+                    runtimeGraph.CompilerInputKind,
+                    DialogCompilerMetadata.DialogScriptInputKind,
+                    StringComparison.Ordinal);
         }
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using Unity.GraphToolkit.Editor;
 using UnityEditor;
@@ -85,12 +86,31 @@ namespace cherrydev.Editor.GraphToolkit
                 throw new InvalidOperationException($"Dialog script has {errorCount} validation error(s).");
 
             DialogScriptDocument document = parseResult.Document;
+            DialogCompilerInputMetadata inputMetadata = DialogCompilerMetadata.ForDialogScriptSource(source);
+
+            if (TryGetCurrentScriptCompilation(scriptPath, document, inputMetadata, out DialogScriptCompilationResult currentResult))
+            {
+                Debug.Log($"Dialog script '{scriptPath}' generated assets are already current.");
+                return currentResult;
+            }
+
             VariablesConfig variablesConfig = BuildVariablesConfig(scriptPath, document);
             string graphPath = GetAuthoringGraphPath(scriptPath);
 
-            DialogNodeGraph runtimeGraph = CompileGraph(scriptPath, graphPath, document, document.MainStatements, "main", variablesConfig);
+            DialogNodeGraph runtimeGraph = CompileGraph(
+                scriptPath,
+                graphPath,
+                document,
+                document.MainStatements,
+                "main",
+                variablesConfig,
+                inputMetadata);
             string runtimePath = AssetDatabase.GetAssetPath(runtimeGraph);
-            List<DialogScriptPauseCompilationResult> pauseContinuations = CompilePauseContinuations(scriptPath, document, variablesConfig);
+            List<DialogScriptPauseCompilationResult> pauseContinuations = CompilePauseContinuations(
+                scriptPath,
+                document,
+                variablesConfig,
+                inputMetadata);
 
             if (pauseContinuations.Count > 0)
             {
@@ -118,6 +138,81 @@ namespace cherrydev.Editor.GraphToolkit
             !string.IsNullOrEmpty(assetPath) &&
             assetPath.StartsWith("Assets/", StringComparison.Ordinal) &&
             assetPath.EndsWith($".{SourceExtension}", StringComparison.OrdinalIgnoreCase);
+
+        private static bool TryGetCurrentScriptCompilation(
+            string scriptPath,
+            DialogScriptDocument document,
+            DialogCompilerInputMetadata inputMetadata,
+            out DialogScriptCompilationResult result)
+        {
+            result = default;
+            string graphPath = GetAuthoringGraphPath(scriptPath);
+            string runtimePath = DialogGraphCompiler.GetRuntimeAssetPath(graphPath);
+
+            if (document.Variables.Count > 0 &&
+                AssetDatabase.LoadAssetAtPath<VariablesConfig>(GetVariablesConfigPath(scriptPath)) == null)
+            {
+                return false;
+            }
+
+            if (!IsRuntimeCurrentForScript(graphPath, runtimePath, inputMetadata, out DialogNodeGraph mainRuntimeGraph))
+                return false;
+
+            var continuations = new List<DialogScriptPauseCompilationResult>();
+            var compiledSectionIds = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (DialogScriptPauseStatement pause in document.Pauses)
+            {
+                if (!compiledSectionIds.Add(pause.TargetSectionId))
+                    continue;
+
+                if (!document.TryGetSection(pause.TargetSectionId, out _))
+                    continue;
+
+                string continuationGraphPath = GetAuthoringGraphPath(scriptPath, pause.TargetSectionId);
+                string continuationRuntimePath = DialogGraphCompiler.GetRuntimeAssetPath(continuationGraphPath);
+
+                if (!IsRuntimeCurrentForScript(continuationGraphPath, continuationRuntimePath, inputMetadata, out _))
+                    return false;
+
+                continuations.Add(new DialogScriptPauseCompilationResult(
+                    pause.TargetSectionId,
+                    continuationGraphPath,
+                    continuationRuntimePath));
+            }
+
+            if (continuations.Count > 0)
+            {
+                DialogScriptPauseCompilationResult firstContinuation = continuations[0];
+                string continuationGuid = AssetDatabase.AssetPathToGUID(firstContinuation.RuntimeGraphPath);
+
+                if (!string.Equals(mainRuntimeGraph.PauseTargetSectionId, firstContinuation.SectionId, StringComparison.Ordinal) ||
+                    !string.Equals(mainRuntimeGraph.PauseContinuationGraphGuid, continuationGuid, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            result = new DialogScriptCompilationResult(scriptPath, graphPath, runtimePath, continuations);
+            return true;
+        }
+
+        private static bool IsRuntimeCurrentForScript(
+            string graphPath,
+            string runtimePath,
+            DialogCompilerInputMetadata inputMetadata,
+            out DialogNodeGraph runtimeGraph)
+        {
+            runtimeGraph = AssetDatabase.LoadAssetAtPath<DialogNodeGraph>(runtimePath);
+
+            return AssetDatabase.LoadMainAssetAtPath(graphPath) != null &&
+                runtimeGraph != null &&
+                runtimeGraph.CompilerSchemaVersion == DialogCompilerMetadata.SchemaVersion &&
+                string.Equals(runtimeGraph.CompilerInputKind, inputMetadata.InputKind, StringComparison.Ordinal) &&
+                string.Equals(runtimeGraph.CompilerInputHash, inputMetadata.InputHash, StringComparison.Ordinal) &&
+                runtimeGraph.NodesList != null &&
+                runtimeGraph.NodesList.All(node => node != null);
+        }
 
         private static IEnumerable<string> GetSelectedScriptPaths()
         {
@@ -157,18 +252,19 @@ namespace cherrydev.Editor.GraphToolkit
             DialogScriptDocument document,
             IReadOnlyList<DialogScriptStatement> entryStatements,
             string entryLabel,
-            VariablesConfig variablesConfig)
+            VariablesConfig variablesConfig,
+            DialogCompilerInputMetadata inputMetadata)
         {
             if (AssetDatabase.LoadMainAssetAtPath(graphPath) != null)
                 AssetDatabase.DeleteAsset(graphPath);
 
             DialogAuthoringGraph authoringGraph = GraphDatabase.CreateGraph<DialogAuthoringGraph>(graphPath);
             authoringGraph.ConfigureMigratedSettings(variablesConfig, string.Empty, string.Empty);
-            PopulateAuthoringGraph(authoringGraph, document, entryStatements, entryLabel, variablesConfig);
+            PopulateAuthoringGraph(authoringGraph, graphPath, document, entryStatements, entryLabel, variablesConfig);
             GraphDatabase.SaveGraphIfDirty(authoringGraph);
             AssetDatabase.ImportAsset(graphPath);
 
-            DialogNodeGraph runtimeGraph = DialogGraphCompiler.CompileToRuntimeAsset(graphPath);
+            DialogNodeGraph runtimeGraph = DialogGraphCompiler.CompileToRuntimeAsset(graphPath, inputMetadata);
             Debug.Log($"Compiled dialog script '{scriptPath}' section '{entryLabel}' to '{graphPath}'.");
             return runtimeGraph;
         }
@@ -176,7 +272,8 @@ namespace cherrydev.Editor.GraphToolkit
         private static List<DialogScriptPauseCompilationResult> CompilePauseContinuations(
             string scriptPath,
             DialogScriptDocument document,
-            VariablesConfig variablesConfig)
+            VariablesConfig variablesConfig,
+            DialogCompilerInputMetadata inputMetadata)
         {
             var continuations = new List<DialogScriptPauseCompilationResult>();
             var compiledSectionIds = new HashSet<string>(StringComparer.Ordinal);
@@ -196,7 +293,8 @@ namespace cherrydev.Editor.GraphToolkit
                     document,
                     statements,
                     pause.TargetSectionId,
-                    variablesConfig);
+                    variablesConfig,
+                    inputMetadata);
 
                 continuations.Add(new DialogScriptPauseCompilationResult(
                     pause.TargetSectionId,
@@ -330,6 +428,7 @@ namespace cherrydev.Editor.GraphToolkit
 
         private static void PopulateAuthoringGraph(
             DialogAuthoringGraph authoringGraph,
+            string graphPath,
             DialogScriptDocument document,
             IReadOnlyList<DialogScriptStatement> entryStatements,
             string entryLabel,
@@ -340,13 +439,21 @@ namespace cherrydev.Editor.GraphToolkit
             if (graphModel == null)
                 throw new InvalidOperationException("Could not access Graph Toolkit graph model.");
 
-            AuthoringNodeBinding startNode = CreateAuthoringNode(graphModel, new DialogStartNode(), new Vector2(-NodeSpacingX, 0f));
+            SetGraphModelGuid(graphModel, $"dialog-script:{graphPath}:{entryLabel}:graph");
+
+            AuthoringNodeBinding startNode = CreateAuthoringNode(
+                graphModel,
+                new DialogStartNode(),
+                new Vector2(-NodeSpacingX, 0f),
+                $"{entryLabel}/start");
+
             if (variablesConfig != null)
             {
                 AuthoringNodeBinding settingsNode = CreateAuthoringNode(
                     graphModel,
                     new DialogGraphSettingsNode(),
-                    new Vector2(-NodeSpacingX, -NodeSpacingY));
+                    new Vector2(-NodeSpacingX, -NodeSpacingY),
+                    $"{entryLabel}/settings");
                 SetOption(settingsNode.Node, DialogGraphOptions.VariablesConfig, variablesConfig);
                 RedefineNode(settingsNode.Model);
             }
@@ -355,7 +462,15 @@ namespace cherrydev.Editor.GraphToolkit
             BuildSequenceResult main = builder.Build(entryStatements, Vector2.zero, entryLabel);
 
             if (main.First != null)
-                CreateWire(graphModel, startNode.Node, DialogGraphPorts.Next, main.First, DialogGraphPorts.Input);
+            {
+                CreateWire(
+                    graphModel,
+                    startNode.Node,
+                    DialogGraphPorts.Next,
+                    main.First,
+                    DialogGraphPorts.Input,
+                    $"{entryLabel}/start:{DialogGraphPorts.Next}->{GetNodeSourceKey(main.First)}:{DialogGraphPorts.Input}");
+            }
         }
 
         private static object GetGraphModel(DialogAuthoringGraph graph)
@@ -364,8 +479,18 @@ namespace cherrydev.Editor.GraphToolkit
             return implementationField?.GetValue(graph);
         }
 
-        private static AuthoringNodeBinding CreateAuthoringNode(object graphModel, GtkNode node, Vector2 position)
+        private static AuthoringNodeBinding CreateAuthoringNode(
+            object graphModel,
+            GtkNode node,
+            Vector2 position,
+            string sourceKey = "")
         {
+            if (!string.IsNullOrWhiteSpace(sourceKey) &&
+                TryCreateAuthoringNodeWithDeterministicGuid(graphModel, node, position, sourceKey, out AuthoringNodeBinding binding))
+            {
+                return binding;
+            }
+
             MethodInfo createNodeModel = graphModel.GetType().GetMethod("CreateNodeModel", BindingFlags.Instance | BindingFlags.Public);
             object nodeModel = createNodeModel?.Invoke(graphModel, new object[] { node, position });
 
@@ -373,6 +498,89 @@ namespace cherrydev.Editor.GraphToolkit
                 throw new InvalidOperationException($"Could not create authoring node model for {node.GetType().Name}.");
 
             return new AuthoringNodeBinding(node, nodeModel);
+        }
+
+        private static bool TryCreateAuthoringNodeWithDeterministicGuid(
+            object graphModel,
+            GtkNode node,
+            Vector2 position,
+            string sourceKey,
+            out AuthoringNodeBinding binding)
+        {
+            binding = default;
+            MethodInfo createNode = graphModel.GetType()
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                .FirstOrDefault(method =>
+                {
+                    if (method.Name != "CreateNode")
+                        return false;
+
+                    ParameterInfo[] parameters = method.GetParameters();
+                    return parameters.Length == 6 &&
+                        parameters[0].ParameterType == typeof(Type) &&
+                        parameters[1].ParameterType == typeof(string) &&
+                        parameters[2].ParameterType == typeof(Vector2) &&
+                        parameters[3].ParameterType == typeof(Hash128);
+                });
+
+            if (createNode == null)
+                return false;
+
+            Type userNodeModelType = graphModel.GetType().Assembly
+                .GetType("Unity.GraphToolkit.Editor.Implementation.UserNodeModelImp");
+
+            if (userNodeModelType == null)
+                return false;
+
+            Type callbackType = createNode.GetParameters()[4].ParameterType;
+            Type spawnFlagsType = createNode.GetParameters()[5].ParameterType;
+            Delegate initializationCallback = CreateInitializeNodeCallback(callbackType, node);
+            object spawnFlags = Enum.ToObject(spawnFlagsType, 0);
+            object nodeModel = createNode.Invoke(
+                graphModel,
+                new object[]
+                {
+                    userNodeModelType,
+                    string.Empty,
+                    position,
+                    Hash128.Compute(sourceKey),
+                    initializationCallback,
+                    spawnFlags
+                });
+
+            if (nodeModel == null)
+                return false;
+
+            binding = new AuthoringNodeBinding(node, nodeModel);
+            return true;
+        }
+
+        private static Delegate CreateInitializeNodeCallback(Type callbackType, GtkNode node)
+        {
+            Type modelType = callbackType.GetGenericArguments()[0];
+            ParameterExpression modelParameter = Expression.Parameter(modelType, "model");
+            MethodInfo initializeMethod = typeof(DialogScriptCompiler)
+                .GetMethod(nameof(InitializeAuthoringNodeModel), BindingFlags.Static | BindingFlags.NonPublic);
+            MethodCallExpression body = Expression.Call(
+                initializeMethod,
+                Expression.Convert(modelParameter, typeof(object)),
+                Expression.Constant(node, typeof(GtkNode)));
+
+            return Expression.Lambda(callbackType, body, modelParameter).Compile();
+        }
+
+        private static void InitializeAuthoringNodeModel(object nodeModel, GtkNode node)
+        {
+            MethodInfo initCustomNode = nodeModel.GetType()
+                .GetMethod("InitCustomNode", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            initCustomNode?.Invoke(nodeModel, new object[] { node });
+        }
+
+        private static void SetGraphModelGuid(object graphModel, string sourceKey)
+        {
+            MethodInfo setGuid = graphModel.GetType()
+                .GetMethod("SetGuid", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            setGuid?.Invoke(graphModel, new object[] { Hash128.Compute(sourceKey) });
         }
 
         private static void SetOption(GtkNode node, string optionName, object value)
@@ -401,7 +609,8 @@ namespace cherrydev.Editor.GraphToolkit
             GtkNode sourceNode,
             string sourcePortName,
             GtkNode targetNode,
-            string targetPortName)
+            string targetPortName,
+            string sourceKey = "")
         {
             IPort outputPort = sourceNode.GetOutputPortByName(sourcePortName);
             IPort inputPort = targetNode.GetInputPortByName(targetPortName);
@@ -416,7 +625,18 @@ namespace cherrydev.Editor.GraphToolkit
             if (createWire == null)
                 throw new InvalidOperationException("Graph Toolkit CreateWire method was not found.");
 
-            createWire.Invoke(graphModel, new object[] { inputPort, outputPort, new Hash128() });
+            Hash128 wireGuid = string.IsNullOrWhiteSpace(sourceKey)
+                ? new Hash128()
+                : Hash128.Compute(sourceKey);
+            createWire.Invoke(graphModel, new object[] { inputPort, outputPort, wireGuid });
+        }
+
+        private static string GetNodeSourceKey(GtkNode node)
+        {
+            string sourceKey = DialogGraphOptionReader.Read(node, DialogGraphOptions.CompilerSourceKey, string.Empty);
+            return string.IsNullOrWhiteSpace(sourceKey)
+                ? node.GetType().FullName
+                : sourceKey;
         }
 
         private sealed class DialogScriptGraphBuilder
@@ -453,7 +673,15 @@ namespace cherrydev.Editor.GraphToolkit
                     first ??= current.First;
 
                     foreach (FlowExit pendingExit in pendingExits)
-                        CreateWire(graphModel, pendingExit.Node, pendingExit.PortName, current.First, DialogGraphPorts.Input);
+                    {
+                        CreateWire(
+                            graphModel,
+                            pendingExit.Node,
+                            pendingExit.PortName,
+                            current.First,
+                            DialogGraphPorts.Input,
+                            $"{GetNodeSourceKey(pendingExit.Node)}:{pendingExit.PortName}->{GetNodeSourceKey(current.First)}:{DialogGraphPorts.Input}");
+                    }
 
                     if (statement is DialogScriptChoiceStatement && HasStatementBeforePause(statements, index + 1))
                         throw new InvalidOperationException($"Choice in '{label}' must be the last statement in its sequence.");
@@ -481,12 +709,18 @@ namespace cherrydev.Editor.GraphToolkit
                 {
                     case DialogScriptSentenceStatement sentence:
                     {
-                        GtkNode node = CreateSentenceNode(sentence, position);
+                        GtkNode node = CreateSentenceNode(
+                            sentence,
+                            position,
+                            GetStatementSourceKey(label, sentence, index, "sentence"));
                         return BuildSequenceResult.Single(node, DialogGraphPorts.Next);
                     }
                     case DialogScriptExternalFunctionStatement externalFunction:
                     {
-                        GtkNode node = CreateExternalFunctionNode(externalFunction, position);
+                        GtkNode node = CreateExternalFunctionNode(
+                            externalFunction,
+                            position,
+                            GetStatementSourceKey(label, externalFunction, index, "external_function"));
                         return BuildSequenceResult.Single(node, DialogGraphPorts.Next);
                     }
                     case DialogScriptChoiceStatement choice:
@@ -498,18 +732,34 @@ namespace cherrydev.Editor.GraphToolkit
                 }
             }
 
-            private GtkNode CreateSentenceNode(DialogScriptSentenceStatement sentence, Vector2 position)
+            private static string GetStatementSourceKey(
+                string label,
+                DialogScriptStatement statement,
+                int index,
+                string kind) =>
+                $"{label}/line_{statement.LineNumber:D4}/index_{index:D4}/{kind}";
+
+            private GtkNode CreateSentenceNode(DialogScriptSentenceStatement sentence, Vector2 position, string sourceKey)
             {
-                AuthoringNodeBinding binding = CreateAuthoringNode(graphModel, new DialogSentenceNode(), position);
+                AuthoringNodeBinding binding = CreateAuthoringNode(graphModel, new DialogSentenceNode(), position, sourceKey);
+                SetOption(binding.Node, DialogGraphOptions.CompilerSourceKey, sourceKey);
                 SetOption(binding.Node, DialogGraphOptions.CharacterName, sentence.Speaker);
                 SetOption(binding.Node, DialogGraphOptions.SentenceText, sentence.Text);
                 RedefineNode(binding.Model);
                 return binding.Node;
             }
 
-            private GtkNode CreateExternalFunctionNode(DialogScriptExternalFunctionStatement externalFunction, Vector2 position)
+            private GtkNode CreateExternalFunctionNode(
+                DialogScriptExternalFunctionStatement externalFunction,
+                Vector2 position,
+                string sourceKey)
             {
-                AuthoringNodeBinding binding = CreateAuthoringNode(graphModel, new DialogExternalFunctionNode(), position);
+                AuthoringNodeBinding binding = CreateAuthoringNode(
+                    graphModel,
+                    new DialogExternalFunctionNode(),
+                    position,
+                    sourceKey);
+                SetOption(binding.Node, DialogGraphOptions.CompilerSourceKey, sourceKey);
                 SetOption(binding.Node, DialogGraphOptions.FunctionName, externalFunction.FunctionName);
                 SetOption(binding.Node, DialogGraphOptions.FunctionDescription, externalFunction.Description);
                 RedefineNode(binding.Model);
@@ -521,8 +771,10 @@ namespace cherrydev.Editor.GraphToolkit
                 if (choice.Choices.Count == 0)
                     throw new InvalidOperationException($"Choice in '{label}' has no answer options.");
 
-                AuthoringNodeBinding binding = CreateAuthoringNode(graphModel, new DialogAnswerNode(), position);
+                string sourceKey = GetStatementSourceKey(label, choice, index, "choice");
+                AuthoringNodeBinding binding = CreateAuthoringNode(graphModel, new DialogAnswerNode(), position, sourceKey);
                 int answerCount = Mathf.Clamp(choice.Choices.Count, 1, DialogGraphPorts.MaxAnswerPorts);
+                SetOption(binding.Node, DialogGraphOptions.CompilerSourceKey, sourceKey);
                 SetOption(binding.Node, DialogGraphOptions.AnswerCount, answerCount);
                 RedefineNode(binding.Model);
 
@@ -539,7 +791,15 @@ namespace cherrydev.Editor.GraphToolkit
                         $"{label}.choice_{index + 1}.{choiceIndex + 1}");
 
                     if (branch.First != null)
-                        CreateWire(graphModel, binding.Node, DialogGraphPorts.Answer(choiceIndex), branch.First, DialogGraphPorts.Input);
+                    {
+                        CreateWire(
+                            graphModel,
+                            binding.Node,
+                            DialogGraphPorts.Answer(choiceIndex),
+                            branch.First,
+                            DialogGraphPorts.Input,
+                            $"{sourceKey}:{DialogGraphPorts.Answer(choiceIndex)}->{GetNodeSourceKey(branch.First)}:{DialogGraphPorts.Input}");
+                    }
                 }
 
                 return new BuildSequenceResult(binding.Node, Array.Empty<FlowExit>());
@@ -551,7 +811,13 @@ namespace cherrydev.Editor.GraphToolkit
                 string label,
                 int index)
             {
-                AuthoringNodeBinding binding = CreateAuthoringNode(graphModel, new DialogVariableConditionNode(), position);
+                string sourceKey = GetStatementSourceKey(label, conditional, index, "condition");
+                AuthoringNodeBinding binding = CreateAuthoringNode(
+                    graphModel,
+                    new DialogVariableConditionNode(),
+                    position,
+                    sourceKey);
+                SetOption(binding.Node, DialogGraphOptions.CompilerSourceKey, sourceKey);
                 SetOption(binding.Node, DialogGraphOptions.ConditionExpression, conditional.ConditionExpression);
                 RedefineNode(binding.Model);
 
@@ -581,7 +847,13 @@ namespace cherrydev.Editor.GraphToolkit
 
                 if (trueBranch.First != null)
                 {
-                    CreateWire(graphModel, binding.Node, DialogGraphPorts.True, trueBranch.First, DialogGraphPorts.Input);
+                    CreateWire(
+                        graphModel,
+                        binding.Node,
+                        DialogGraphPorts.True,
+                        trueBranch.First,
+                        DialogGraphPorts.Input,
+                        $"{sourceKey}:{DialogGraphPorts.True}->{GetNodeSourceKey(trueBranch.First)}:{DialogGraphPorts.Input}");
                     exits.AddRange(trueBranch.Exits);
                 }
                 else
@@ -594,7 +866,13 @@ namespace cherrydev.Editor.GraphToolkit
 
                 if (falseBranch.First != null)
                 {
-                    CreateWire(graphModel, binding.Node, DialogGraphPorts.False, falseBranch.First, DialogGraphPorts.Input);
+                    CreateWire(
+                        graphModel,
+                        binding.Node,
+                        DialogGraphPorts.False,
+                        falseBranch.First,
+                        DialogGraphPorts.Input,
+                        $"{sourceKey}:{DialogGraphPorts.False}->{GetNodeSourceKey(falseBranch.First)}:{DialogGraphPorts.Input}");
                     exits.AddRange(falseBranch.Exits);
                 }
                 else
@@ -613,7 +891,15 @@ namespace cherrydev.Editor.GraphToolkit
                 BuildSequenceResult branch = BuildSection(sectionId, origin, label);
 
                 if (branch.First != null)
-                    CreateWire(graphModel, conditionNode, portName, branch.First, DialogGraphPorts.Input);
+                {
+                    CreateWire(
+                        graphModel,
+                        conditionNode,
+                        portName,
+                        branch.First,
+                        DialogGraphPorts.Input,
+                        $"{GetNodeSourceKey(conditionNode)}:{portName}->{GetNodeSourceKey(branch.First)}:{DialogGraphPorts.Input}");
+                }
             }
 
             private BuildSequenceResult BuildSection(string sectionId, Vector2 origin, string label)

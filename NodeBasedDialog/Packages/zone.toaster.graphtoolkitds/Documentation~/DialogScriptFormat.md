@@ -43,8 +43,15 @@ Alex:
 - The Unity compiler accepts project asset paths that start with `Assets/`.
 - Unity auto-compiles imported or moved `.ds.md` assets.
 - Manual compile command: `Tools > Dialog System > Compile Selected Dialog Scripts`.
-- The compiler reads the source, parses it, validates it, creates or replaces the
-  generated authoring graph, then creates or replaces the runtime graph.
+- The compiler reads the source, parses it, validates it, and updates the generated
+  authoring and runtime graphs only when their compiler metadata is stale.
+- Generated `.dialoggtk` and `_Runtime.asset` files are stable, reviewable project
+  assets. Recompiling unchanged source should not produce file diffs.
+- Generated `.dialoggtk` files are owned by their `.ds.md` source. The graph
+  auto-compiler skips them after script compilation, so it does not overwrite the
+  runtime graph's script-source metadata with authoring-graph metadata.
+- Generated nodes carry stable compiler source keys. Runtime graph compilation reuses
+  matching node sub-assets instead of deleting and recreating every node.
 
 Generated assets use the source file name:
 

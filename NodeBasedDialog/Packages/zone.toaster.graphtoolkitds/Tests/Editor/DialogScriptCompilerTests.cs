@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 namespace cherrydev.Editor.GraphToolkit.Tests
@@ -8,6 +10,7 @@ namespace cherrydev.Editor.GraphToolkit.Tests
     public sealed class DialogScriptCompilerTests
     {
         const string ScriptPath = "Assets/Dialogues/Test.ds.md";
+        const string GeneratedAssetTestRoot = "Assets/__DialogCompilerTests";
 
         [Test]
         public void ValidateSourceReportsUnknownDirectivesWithLineNumbers()
@@ -409,6 +412,114 @@ namespace cherrydev.Editor.GraphToolkit.Tests
             Assert.AreEqual(2, diagnostic.LineNumber);
         }
 
+        [Test]
+        public void CompileToAssetsDoesNotRewriteGeneratedAssetsWhenSourceIsUnchanged()
+        {
+            const string source =
+                "Sergey:\n" +
+                "> Before.\n" +
+                "@effect review:+5\n" +
+                "@pause after_delivery\n" +
+                "\n" +
+                "@section after_delivery\n" +
+                "Sergey:\n" +
+                "> After.";
+
+            string scriptPath = WriteGeneratedAssetTestScript("Stable.ds.md", source);
+
+            try
+            {
+                DialogScriptCompilationResult result = DialogScriptCompiler.CompileToAssets(scriptPath);
+                AssetDatabase.SaveAssets();
+                Dictionary<string, string> snapshots = CaptureGeneratedAssetSnapshots(result);
+
+                DialogScriptCompilationResult secondResult = DialogScriptCompiler.CompileToAssets(scriptPath);
+                AssetDatabase.SaveAssets();
+
+                CollectionAssert.AreEquivalent(snapshots.Keys, CaptureGeneratedAssetSnapshots(secondResult).Keys);
+
+                foreach (KeyValuePair<string, string> snapshot in snapshots)
+                    Assert.AreEqual(snapshot.Value, File.ReadAllText(snapshot.Key), snapshot.Key);
+            }
+            finally
+            {
+                AssetDatabase.DeleteAsset(GeneratedAssetTestRoot);
+            }
+        }
+
+        [Test]
+        public void GraphAutoCompilerDoesNotRewriteRuntimeGraphOwnedByDialogScript()
+        {
+            const string source =
+                "Sergey:\n" +
+                "> Before.\n" +
+                "@effect review:+5\n" +
+                "@pause after_delivery\n" +
+                "\n" +
+                "@section after_delivery\n" +
+                "Sergey:\n" +
+                "> After.";
+
+            string scriptPath = WriteGeneratedAssetTestScript("AutoCompileLoop.ds.md", source);
+
+            try
+            {
+                DialogScriptCompilationResult result = DialogScriptCompiler.CompileToAssets(scriptPath);
+                AssetDatabase.SaveAssets();
+                Dictionary<string, string> snapshots = CaptureGeneratedAssetSnapshots(result);
+
+                Assert.IsFalse(DialogGraphAutoCompiler.CompileGraphIfPresent(result.AuthoringGraphPath));
+                AssetDatabase.SaveAssets();
+
+                foreach (KeyValuePair<string, string> snapshot in snapshots)
+                    Assert.AreEqual(snapshot.Value, File.ReadAllText(snapshot.Key), snapshot.Key);
+            }
+            finally
+            {
+                AssetDatabase.DeleteAsset(GeneratedAssetTestRoot);
+            }
+        }
+
+        [Test]
+        public void CompileToAssetsPreservesRuntimeSubAssetIdsForStableSourceKeys()
+        {
+            string scriptPath = WriteGeneratedAssetTestScript(
+                "Reuse.ds.md",
+                "Alex:\n" +
+                "> First.\n" +
+                "> Second.\n" +
+                "@effect review:+5");
+
+            try
+            {
+                DialogScriptCompilationResult result = DialogScriptCompiler.CompileToAssets(scriptPath);
+                AssetDatabase.SaveAssets();
+                Dictionary<string, long> beforeIds = CaptureRuntimeNodeLocalIds(result.RuntimeGraphPath);
+
+                File.WriteAllText(
+                    scriptPath,
+                    "Alex:\n" +
+                    "> First.\n" +
+                    "> Second changed.\n" +
+                    "@effect review:+5");
+                AssetDatabase.ImportAsset(scriptPath);
+
+                DialogScriptCompilationResult updatedResult = DialogScriptCompiler.CompileToAssets(scriptPath);
+                AssetDatabase.SaveAssets();
+                Dictionary<string, long> afterIds = CaptureRuntimeNodeLocalIds(updatedResult.RuntimeGraphPath);
+
+                Assert.GreaterOrEqual(beforeIds.Count, 3);
+                CollectionAssert.AreEquivalent(beforeIds.Keys, afterIds.Keys);
+
+                foreach (KeyValuePair<string, long> beforeId in beforeIds)
+                    Assert.AreEqual(beforeId.Value, afterIds[beforeId.Key], beforeId.Key);
+            }
+            finally
+            {
+                AssetDatabase.DeleteAsset(GeneratedAssetTestRoot);
+            }
+        }
+
         static VariablesConfig CreateVariables(params Variable[] variables)
         {
             VariablesConfig config = ScriptableObject.CreateInstance<VariablesConfig>();
@@ -417,6 +528,50 @@ namespace cherrydev.Editor.GraphToolkit.Tests
                 config.AddVariable(variable);
 
             return config;
+        }
+
+        static string WriteGeneratedAssetTestScript(string fileName, string source)
+        {
+            if (!AssetDatabase.IsValidFolder(GeneratedAssetTestRoot))
+                AssetDatabase.CreateFolder("Assets", Path.GetFileName(GeneratedAssetTestRoot));
+
+            string scriptPath = $"{GeneratedAssetTestRoot}/{fileName}";
+            File.WriteAllText(scriptPath, source);
+            AssetDatabase.ImportAsset(scriptPath);
+            return scriptPath;
+        }
+
+        static Dictionary<string, string> CaptureGeneratedAssetSnapshots(DialogScriptCompilationResult result)
+        {
+            var paths = new List<string>
+            {
+                result.AuthoringGraphPath,
+                result.RuntimeGraphPath
+            };
+
+            foreach (DialogScriptPauseCompilationResult continuation in result.PauseContinuations)
+            {
+                paths.Add(continuation.AuthoringGraphPath);
+                paths.Add(continuation.RuntimeGraphPath);
+            }
+
+            return paths.ToDictionary(path => path, File.ReadAllText);
+        }
+
+        static Dictionary<string, long> CaptureRuntimeNodeLocalIds(string runtimeGraphPath)
+        {
+            DialogNodeGraph runtimeGraph = AssetDatabase.LoadAssetAtPath<DialogNodeGraph>(runtimeGraphPath);
+            Assert.NotNull(runtimeGraph);
+
+            return runtimeGraph.NodesList.ToDictionary(
+                node => node.CompilerSourceKey,
+                GetLocalFileId);
+        }
+
+        static long GetLocalFileId(Object asset)
+        {
+            Assert.IsTrue(AssetDatabase.TryGetGUIDAndLocalFileIdentifier(asset, out string _, out long localId));
+            return localId;
         }
     }
 

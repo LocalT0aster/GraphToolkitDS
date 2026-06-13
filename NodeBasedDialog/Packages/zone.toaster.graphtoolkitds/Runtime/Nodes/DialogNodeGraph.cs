@@ -24,6 +24,10 @@ namespace cherrydev
         [SerializeField] private string _authoringGraphGuid;
         [SerializeField] private string _pauseTargetSectionId;
         [SerializeField] private string _pauseContinuationGraphGuid;
+        [SerializeField, HideInInspector] private int _compilerSchemaVersion;
+        [SerializeField, HideInInspector] private string _compilerInputKind;
+        [SerializeField, HideInInspector] private string _compilerInputHash;
+        [SerializeField, HideInInspector] private string _compilerAuthoringGraphHash;
 
         [HideInInspector] public Node NodeToDrawLineFrom;
         [HideInInspector] public Vector2 LinePosition = Vector2.zero;
@@ -33,6 +37,10 @@ namespace cherrydev
         public string AuthoringGraphGuid => _authoringGraphGuid;
         public string PauseTargetSectionId => _pauseTargetSectionId;
         public string PauseContinuationGraphGuid => _pauseContinuationGraphGuid;
+        public int CompilerSchemaVersion => _compilerSchemaVersion;
+        public string CompilerInputKind => _compilerInputKind ?? string.Empty;
+        public string CompilerInputHash => _compilerInputHash ?? string.Empty;
+        public string CompilerAuthoringGraphHash => _compilerAuthoringGraphHash ?? string.Empty;
 
         [HideInInspector] public bool IsLocalizationSetUp;
 
@@ -62,6 +70,18 @@ namespace cherrydev
         {
             _pauseTargetSectionId = pauseTargetSectionId ?? string.Empty;
             _pauseContinuationGraphGuid = pauseContinuationGraphGuid ?? string.Empty;
+        }
+
+        public void ConfigureCompilerMetadata(
+            int schemaVersion,
+            string inputKind,
+            string inputHash,
+            string authoringGraphHash)
+        {
+            _compilerSchemaVersion = schemaVersion;
+            _compilerInputKind = inputKind ?? string.Empty;
+            _compilerInputHash = inputHash ?? string.Empty;
+            _compilerAuthoringGraphHash = authoringGraphHash ?? string.Empty;
         }
 
 #if UNITY_EDITOR

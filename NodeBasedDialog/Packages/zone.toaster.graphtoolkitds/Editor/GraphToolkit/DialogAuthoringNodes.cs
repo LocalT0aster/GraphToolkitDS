@@ -39,6 +39,7 @@ namespace cherrydev.Editor.GraphToolkit
     {
         protected override void OnDefineOptions(IOptionDefinitionContext context)
         {
+            DialogAuthoringNodeOptions.AddCompilerSourceKey(context);
             context.AddOption<string>(DialogGraphOptions.CharacterName)
                 .WithDisplayName("Character")
                 .Delayed()
@@ -93,6 +94,7 @@ namespace cherrydev.Editor.GraphToolkit
     {
         protected override void OnDefineOptions(IOptionDefinitionContext context)
         {
+            DialogAuthoringNodeOptions.AddCompilerSourceKey(context);
             context.AddOption<int>(DialogGraphOptions.AnswerCount)
                 .WithDisplayName("Answers")
                 .WithDefaultValue(2)
@@ -145,6 +147,7 @@ namespace cherrydev.Editor.GraphToolkit
     {
         protected override void OnDefineOptions(IOptionDefinitionContext context)
         {
+            DialogAuthoringNodeOptions.AddCompilerSourceKey(context);
             context.AddOption<string>(DialogGraphOptions.FunctionName)
                 .WithDisplayName("Function")
                 .Delayed()
@@ -174,6 +177,7 @@ namespace cherrydev.Editor.GraphToolkit
     {
         protected override void OnDefineOptions(IOptionDefinitionContext context)
         {
+            DialogAuthoringNodeOptions.AddCompilerSourceKey(context);
             AddVariableValueOptions(context);
             context.AddOption<ModificationType>(DialogGraphOptions.ModificationType)
                 .WithDisplayName("Action")
@@ -224,6 +228,7 @@ namespace cherrydev.Editor.GraphToolkit
     {
         protected override void OnDefineOptions(IOptionDefinitionContext context)
         {
+            DialogAuthoringNodeOptions.AddCompilerSourceKey(context);
             context.AddOption<string>(DialogGraphOptions.VariableName)
                 .WithDisplayName("Variable")
                 .Delayed()
@@ -268,6 +273,18 @@ namespace cherrydev.Editor.GraphToolkit
             context.AddOutputPort<DialogFlow>(DialogGraphPorts.False)
                 .WithDisplayName("False")
                 .WithConnectorUI(PortConnectorUI.Arrowhead)
+                .Build();
+        }
+    }
+
+    internal static class DialogAuthoringNodeOptions
+    {
+        public static void AddCompilerSourceKey(GtkNode.IOptionDefinitionContext context)
+        {
+            context.AddOption<string>(DialogGraphOptions.CompilerSourceKey)
+                .WithDisplayName("Compiler Source Key")
+                .ShowInInspectorOnly()
+                .Delayed()
                 .Build();
         }
     }

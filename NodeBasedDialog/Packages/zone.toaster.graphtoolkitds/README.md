@@ -42,6 +42,8 @@ Package dependencies are declared in `package.json` and are installed by UPM.
 
 You can still force a rebuild from `Tools > Dialog System > Compile Selected Graph Toolkit Dialog Graphs`.
 
+Generated authoring graphs and runtime graphs are intended to be tracked project assets. Re-saving an unchanged `.ds.md` script or `.dialoggtk` graph should not rewrite generated files. When regeneration is needed, the compiler uses stable source keys and deterministic Graph Toolkit IDs so diffs reflect dialogue changes rather than Unity sub-asset churn.
+
 ### Presentation Settings
 
 Create a `DialogPresentationConfig` asset from `Assets > Create > Dialog System > Presentation Config` and assign it to `DialogBehaviour` when you want dialogue pacing to be shared across scenes or prefabs. The config controls character delay, whether sentence-to-sentence nodes auto-advance, and the delay before auto-advance.
