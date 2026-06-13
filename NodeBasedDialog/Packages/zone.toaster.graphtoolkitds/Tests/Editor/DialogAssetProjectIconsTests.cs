@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using UnityEditor;
+using UnityEngine;
 
 namespace cherrydev.Editor.GraphToolkit.Tests
 {
@@ -45,6 +46,29 @@ namespace cherrydev.Editor.GraphToolkit.Tests
             Assert.IsNull(DialogAssetProjectIcons.GetIconPathForAssetPath("Assets/Dialogues/Client.md"));
             Assert.IsNull(DialogAssetProjectIcons.GetIconPathForAssetPath("Assets/Dialogues/Client.asset"));
             Assert.IsNull(DialogAssetProjectIcons.GetIconPathForAssetPath(string.Empty));
+        }
+
+        [Test]
+        public void GetIconRectKeepsListViewIconSize()
+        {
+            Rect iconRect = DialogAssetProjectIcons.GetIconRect(new Rect(30f, 10f, 220f, 18f));
+
+            Assert.AreEqual(new Rect(12f, 11f, 16f, 16f), iconRect);
+        }
+
+        [Test]
+        public void GetIconRectScalesWithLargeProjectGridItems()
+        {
+            Rect iconRect = DialogAssetProjectIcons.GetIconRect(new Rect(10f, 20f, 96f, 116f));
+
+            Assert.AreEqual(new Rect(10f, 20f, 96f, 96f), iconRect);
+        }
+
+        [Test]
+        public void GetIconBackgroundColorIsOpaque()
+        {
+            Assert.AreEqual(1f, DialogAssetProjectIcons.GetIconBackgroundColor(isSelected: false).a);
+            Assert.AreEqual(1f, DialogAssetProjectIcons.GetIconBackgroundColor(isSelected: true).a);
         }
     }
 }

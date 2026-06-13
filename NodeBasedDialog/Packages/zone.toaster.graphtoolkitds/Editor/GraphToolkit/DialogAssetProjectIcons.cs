@@ -11,6 +11,9 @@ namespace cherrydev.Editor.GraphToolkit
             "Packages/zone.toaster.graphtoolkitds/Editor/Icons/icon.ds.md.png";
         private const string DialogGraphIconPath =
             "Packages/zone.toaster.graphtoolkitds/Editor/Icons/icon.dialoggtk.png";
+        private const float ListIconSize = 16f;
+        private const float ListIconOffset = 2f;
+        private const float GridLabelReservedHeight = 14f;
 
         private static Texture2D dialogScriptIcon;
         private static Texture2D dialogGraphIcon;
@@ -53,27 +56,37 @@ namespace cherrydev.Editor.GraphToolkit
 
         internal static Rect GetIconRect(Rect selectionRect)
         {
-            const float listIconSize = 16f;
-
-            if (selectionRect.height <= 20f)
+            if (IsListItemRect(selectionRect))
             {
                 return new Rect(
-                    selectionRect.x - listIconSize - 2f,
-                    selectionRect.y + (selectionRect.height - listIconSize) * 0.5f,
-                    listIconSize,
-                    listIconSize);
+                    selectionRect.x - ListIconSize - ListIconOffset,
+                    selectionRect.y + (selectionRect.height - ListIconSize) * 0.5f,
+                    ListIconSize,
+                    ListIconSize);
             }
 
-            float iconSize = Mathf.Clamp(
-                Mathf.Min(selectionRect.width, selectionRect.height - 14f),
-                listIconSize,
-                64f);
+            float iconAreaHeight = Mathf.Max(ListIconSize, selectionRect.height - GridLabelReservedHeight);
+            float iconSize = Mathf.Max(ListIconSize, Mathf.Min(selectionRect.width, iconAreaHeight));
 
             return new Rect(
                 selectionRect.x + (selectionRect.width - iconSize) * 0.5f,
                 selectionRect.y,
                 iconSize,
                 iconSize);
+        }
+
+        internal static Color GetIconBackgroundColor(bool isSelected)
+        {
+            if (isSelected)
+            {
+                Color selectionColor = GUI.skin.settings.selectionColor;
+                selectionColor.a = 1f;
+                return selectionColor;
+            }
+
+            return EditorGUIUtility.isProSkin
+                ? new Color32(56, 56, 56, 255)
+                : new Color32(194, 194, 194, 255);
         }
 
         private static Texture2D LoadIcon(string iconPath)
@@ -83,12 +96,27 @@ namespace cherrydev.Editor.GraphToolkit
 
         private static void DrawProjectIcon(string guid, Rect selectionRect)
         {
+            if (Event.current.type != EventType.Repaint)
+                return;
+
             Texture2D icon = GetIconForAssetPath(AssetDatabase.GUIDToAssetPath(guid));
 
             if (icon == null)
                 return;
 
-            GUI.DrawTexture(GetIconRect(selectionRect), icon, ScaleMode.ScaleToFit, true);
+            Rect iconRect = GetIconRect(selectionRect);
+            EditorGUI.DrawRect(iconRect, GetIconBackgroundColor(IsSelected(guid)));
+            GUI.DrawTexture(iconRect, icon, ScaleMode.ScaleToFit, true);
+        }
+
+        private static bool IsListItemRect(Rect selectionRect)
+        {
+            return selectionRect.height <= 20f;
+        }
+
+        private static bool IsSelected(string guid)
+        {
+            return Array.IndexOf(Selection.assetGUIDs, guid) >= 0;
         }
     }
 }
