@@ -11,11 +11,17 @@ namespace cherrydev
         [SerializeField] private SentencePanel _dialogSentencePanel;
         [SerializeField] private AnswerPanel _dialogAnswerPanel;
 
+        private bool _hasSuspendedPanelState;
+        private bool _sentencePanelWasActive;
+        private bool _answerPanelWasActive;
+
         private void OnEnable()
         {
             _dialogBehaviour.AddListenerToDialogFinishedEvent(DisableDialogPanel);
 
             _dialogBehaviour.DialogDisabled += DisableDialogPanel;
+            _dialogBehaviour.DialogSuspended += SuspendDialogPanel;
+            _dialogBehaviour.DialogResumed += ResumeDialogPanel;
             _dialogBehaviour.AnswerButtonSetUp += SetUpAnswerButtonsClickEvent;
 
             _dialogBehaviour.DialogTextCharWrote += _dialogSentencePanel.IncreaseMaxVisibleCharacters;
@@ -41,6 +47,8 @@ namespace cherrydev
         private void OnDisable()
         {
             _dialogBehaviour.DialogDisabled -= DisableDialogPanel;
+            _dialogBehaviour.DialogSuspended -= SuspendDialogPanel;
+            _dialogBehaviour.DialogResumed -= ResumeDialogPanel;
             _dialogBehaviour.AnswerButtonSetUp -= SetUpAnswerButtonsClickEvent;
 
             _dialogBehaviour.DialogTextCharWrote -= _dialogSentencePanel.IncreaseMaxVisibleCharacters;
@@ -114,6 +122,29 @@ namespace cherrydev
             }
 
             gameObject.SetActive(isActive);
+        }
+
+        private void SuspendDialogPanel()
+        {
+            _sentencePanelWasActive = _dialogSentencePanel != null && _dialogSentencePanel.gameObject.activeSelf;
+            _answerPanelWasActive = _dialogAnswerPanel != null && _dialogAnswerPanel.gameObject.activeSelf;
+            _hasSuspendedPanelState = true;
+
+            DisableDialogPanel();
+        }
+
+        private void ResumeDialogPanel()
+        {
+            if (!_hasSuspendedPanelState)
+                return;
+
+            if (_dialogSentencePanel != null)
+                ActiveGameObject(_dialogSentencePanel.gameObject, _sentencePanelWasActive);
+
+            if (_dialogAnswerPanel != null)
+                ActiveGameObject(_dialogAnswerPanel.gameObject, _answerPanelWasActive);
+
+            _hasSuspendedPanelState = false;
         }
         
         /// <summary>

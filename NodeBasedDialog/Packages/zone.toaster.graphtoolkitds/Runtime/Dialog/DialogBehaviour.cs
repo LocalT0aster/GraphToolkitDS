@@ -69,6 +69,10 @@ namespace cherrydev
         private readonly List<int> _visibleAnswerIndices = new();
 
         public bool IsActive { get; set; } = true;
+        public bool IsDialogSuspended => _dialogSuspensionDepth > 0;
+
+        private int _dialogSuspensionDepth;
+        private ExistingAnswerButtonSuspensionState _existingAnswerButtonSuspensionState;
 
         public bool IsCanSkippingText
         {
@@ -88,6 +92,8 @@ namespace cherrydev
         public event Action DialogTextCharWrote;
         public event Action<string> DialogTextSkipped;
         public event Action DialogDisabled;
+        public event Action DialogSuspended;
+        public event Action DialogResumed;
 
         public event Action<ModifyVariableNode> ModifyVariableNodeActivated;
         public event Action<string> VariableChanged;
@@ -188,6 +194,21 @@ namespace cherrydev
         /// </summary>
         public void Disable() => DialogDisabled?.Invoke();
 
+        /// Suspends dialog progression and hides its runtime UI until the returned handle is disposed.
+        public IDisposable SuspendDialog()
+        {
+            _dialogSuspensionDepth++;
+
+            if (_dialogSuspensionDepth == 1)
+            {
+                CaptureExistingAnswerButtonState();
+                HideExistingAnswerButtons();
+                DialogSuspended?.Invoke();
+            }
+
+            return new DialogSuspensionHandle(this);
+        }
+
         public void SetPresentationConfig(DialogPresentationConfig value) => _presentationConfig = value;
 
         /// <summary>
@@ -220,7 +241,7 @@ namespace cherrydev
         /// </summary>
         public void RequestNextSentence()
         {
-            if (!_isDialogStarted || !IsActive)
+            if (!_isDialogStarted || !IsActive || IsDialogSuspended)
                 return;
 
             if (_isCurrentSentenceTyping && _isCanSkippingText)
@@ -392,6 +413,9 @@ namespace cherrydev
         /// <param name="node"></param>
         public void SetCurrentNodeAndHandleDialogGraph(Node node)
         {
+            if (IsDialogSuspended)
+                return;
+
             _currentNode = node;
             HandleDialogGraphCurrentNode(_currentNode);
         }
@@ -403,6 +427,9 @@ namespace cherrydev
         /// <param name="answerIndex">Index of the selected answer</param>
         public void SetCurrentNodeAndHandleDialogGraph(int answerIndex)
         {
+            if (IsDialogSuspended)
+                return;
+
             int resolvedAnswerIndex = ResolveAnswerIndex(answerIndex);
 
             if (CurrentAnswerNode != null && resolvedAnswerIndex >= 0 && resolvedAnswerIndex < CurrentAnswerNode.ChildNodes.Count)
@@ -645,6 +672,7 @@ namespace cherrydev
         private void EndDialog()
         {
             _isDialogStarted = false;
+            ClearDialogSuspensionState();
             HideExistingAnswerButtons();
             _visibleAnswerIndices.Clear();
 
@@ -747,6 +775,9 @@ namespace cherrydev
 
             for (int index = 0; index < visibleCharacters; index++)
             {
+                while (IsDialogSuspended)
+                    yield return null;
+
                 if (_isCurrentSentenceSkipped)
                 {
                     DialogTextSkipped?.Invoke(text);
@@ -756,7 +787,7 @@ namespace cherrydev
 
                 DialogTextCharWrote?.Invoke();
 
-                yield return new WaitForSeconds(DialogCharDelay);
+                yield return WaitForDialogSeconds(DialogCharDelay);
             }
 
             _isCurrentSentenceTyping = false;
@@ -774,6 +805,12 @@ namespace cherrydev
                 float autoAdvanceDelay = AutoAdvanceSentenceDelay;
                 while (elapsed < autoAdvanceDelay && !_isNextSentenceRequested && IsActive)
                 {
+                    if (IsDialogSuspended)
+                    {
+                        yield return null;
+                        continue;
+                    }
+
                     if (CheckNextSentenceKeyCodes())
                     {
                         _isNextSentenceRequested = true;
@@ -786,11 +823,30 @@ namespace cherrydev
             }
             else
             {
-                yield return new WaitUntil(() => IsActive && (_isNextSentenceRequested || CheckNextSentenceKeyCodes()));
+                yield return new WaitUntil(() =>
+                    IsActive && !IsDialogSuspended && (_isNextSentenceRequested || CheckNextSentenceKeyCodes()));
             }
+
+            while (IsDialogSuspended)
+                yield return null;
 
             _isNextSentenceRequested = false;
             CheckForDialogNextNode();
+        }
+
+        private IEnumerator WaitForDialogSeconds(float seconds)
+        {
+            if (seconds <= 0f)
+                yield break;
+
+            float elapsed = 0f;
+            while (elapsed < seconds)
+            {
+                if (!IsDialogSuspended)
+                    elapsed += Time.deltaTime;
+
+                yield return null;
+            }
         }
 
         private bool IsCurrentSentenceLeadingToAnswerNode()
@@ -977,6 +1033,42 @@ namespace cherrydev
             }
         }
 
+        private void CaptureExistingAnswerButtonState()
+        {
+            if (!UseExistingAnswerButtons)
+                return;
+
+            _existingAnswerButtonSuspensionState = new ExistingAnswerButtonSuspensionState(
+                _existingAnswerButtonsRoot,
+                _answerButtons);
+        }
+
+        private void RestoreExistingAnswerButtonState()
+        {
+            _existingAnswerButtonSuspensionState?.Restore();
+            _existingAnswerButtonSuspensionState = null;
+        }
+
+        private void ReleaseDialogSuspension()
+        {
+            if (_dialogSuspensionDepth <= 0)
+                return;
+
+            _dialogSuspensionDepth--;
+
+            if (_dialogSuspensionDepth > 0)
+                return;
+
+            RestoreExistingAnswerButtonState();
+            DialogResumed?.Invoke();
+        }
+
+        private void ClearDialogSuspensionState()
+        {
+            _dialogSuspensionDepth = 0;
+            _existingAnswerButtonSuspensionState = null;
+        }
+
         private static void SetAnswerButtonText(Button button, string text)
         {
             TMP_Text tmpText = button.GetComponentInChildren<TMP_Text>(true);
@@ -1029,7 +1121,7 @@ namespace cherrydev
         /// </summary>
         private void HandleSentenceSkipping()
         {
-            if (!_isDialogStarted || !_isCanSkippingText)
+            if (!_isDialogStarted || !_isCanSkippingText || IsDialogSuspended)
                 return;
 
             if (CheckNextSentenceKeyCodes() && !_isCurrentSentenceSkipped)
@@ -1158,6 +1250,77 @@ namespace cherrydev
             }
 
             return Enum.TryParse(keyCode.ToString(), out key);
+        }
+
+        private sealed class DialogSuspensionHandle : IDisposable
+        {
+            private DialogBehaviour _owner;
+
+            public DialogSuspensionHandle(DialogBehaviour owner) => _owner = owner;
+
+            public void Dispose()
+            {
+                if (_owner == null)
+                    return;
+
+                _owner.ReleaseDialogSuspension();
+                _owner = null;
+            }
+        }
+
+        private sealed class ExistingAnswerButtonSuspensionState
+        {
+            private readonly GameObject _root;
+            private readonly bool _rootWasActive;
+            private readonly ButtonState[] _buttons;
+
+            public ExistingAnswerButtonSuspensionState(GameObject root, IReadOnlyList<Button> buttons)
+            {
+                _root = root;
+                _rootWasActive = root != null && root.activeSelf;
+
+                if (buttons == null)
+                {
+                    _buttons = Array.Empty<ButtonState>();
+                    return;
+                }
+
+                _buttons = new ButtonState[buttons.Count];
+                for (int index = 0; index < buttons.Count; index++)
+                    _buttons[index] = new ButtonState(buttons[index]);
+            }
+
+            public void Restore()
+            {
+                if (_root != null)
+                    _root.SetActive(_rootWasActive);
+
+                for (int index = 0; index < _buttons.Length; index++)
+                    _buttons[index].Restore();
+            }
+        }
+
+        private readonly struct ButtonState
+        {
+            private readonly Button _button;
+            private readonly bool _wasActive;
+            private readonly bool _wasInteractable;
+
+            public ButtonState(Button button)
+            {
+                _button = button;
+                _wasActive = button != null && button.gameObject.activeSelf;
+                _wasInteractable = button != null && button.interactable;
+            }
+
+            public void Restore()
+            {
+                if (_button == null)
+                    return;
+
+                _button.gameObject.SetActive(_wasActive);
+                _button.interactable = _wasInteractable;
+            }
         }
     }
 }
