@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="512"
+   height="512"
+   viewBox="0 0 512 512"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="icon.dialoggtk.svg"
+   inkscape:version="1.4.4 (dcaf3e7d9e, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#505050"
+     bordercolor="#eeeeee"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#505050"
+     inkscape:document-units="px"
+     showgrid="true"
+     inkscape:connector-spacing="3"
+     inkscape:zoom="1.4142136"
+     inkscape:cx="267.63992"
+     inkscape:cy="283.19626"
+     inkscape:window-width="1536"
+     inkscape:window-height="836"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer2">
+    <inkscape:grid
+       id="grid2"
+       units="px"
+       originx="0"
+       originy="0"
+       spacingx="1"
+       spacingy="1"
+       empcolor="#0099e5"
+       empopacity="0.30196078"
+       color="#0099e5"
+       opacity="0.14901961"
+       empspacing="5"
+       enabled="true"
+       visible="true" />
+  </sodipodi:namedview>
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <rect
+       style="fill:#666666"
+       id="rect1"
+       width="300"
+       height="372"
+       x="104"
+       y="60"
+       ry="46" />
+    <rect
+       style="fill:#ffffff"
+       id="rect2"
+       width="300"
+       height="372"
+       x="100"
+       y="64"
+       ry="46" />
+    <path
+       style="display:inline;fill:#666666;fill-rule:evenodd;stroke:#000000;stroke-width:10.6369;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1"
+       d="m 210.28571,247.5 66.85715,24.75"
+       id="path13"
+       inkscape:connector-type="polyline"
+       inkscape:connector-curvature="0" />
+    <path
+       style="display:inline;fill:#666666;fill-rule:evenodd;stroke:#000000;stroke-width:9.8391;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1"
+       d="m 210.28571,206.25 59.14286,-33"
+       id="path12"
+       inkscape:connector-type="polyline"
+       inkscape:connector-curvature="0" />
+    <rect
+       style="fill:#4c4c4c;fill-opacity:1;fill-rule:nonzero;stroke-width:2.70802"
+       id="rect10"
+       width="119.99999"
+       height="82.5"
+       x="110"
+       y="192.5"
+       ry="22.776836" />
+    <rect
+       style="fill:#4c4c4c;fill-opacity:1;fill-rule:nonzero;stroke-width:2.56905"
+       id="rect11"
+       width="120"
+       height="82.5"
+       x="255"
+       y="110"
+       ry="22.776836" />
+    <rect
+       style="fill:#4c4c4c;fill-opacity:1;fill-rule:nonzero;stroke-width:2.70802"
+       id="rect12"
+       width="119.99999"
+       height="82.5"
+       x="260"
+       y="247.5"
+       ry="22.776836" />
+  </g>
+  <g
+     inkscape:groupmode="layer"
+     id="layer2"
+     inkscape:label="Layer 2">
+    <text
+       xml:space="preserve"
+       style="font-size:42.6667px;text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#666666;fill-opacity:1;fill-rule:nonzero;stroke-width:4.02136;stroke-dasharray:none"
+       x="238.72536"
+       y="392.08237"
+       id="text17"
+       transform="scale(1.0053394,0.99468896)"><tspan
+         id="tspan17"
+         x="238.72536"
+         y="392.08237"
+         sodipodi:role="line"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:42.6667px;font-family:'Cascadia Mono';-inkscape-font-specification:'Cascadia Mono Bold';stroke-width:4.02136;fill:#666666">.dialoggtk</tspan></text>
+    <path
+       style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke-width:4;stroke-dasharray:none"
+       d="m 125,215 v 5 h 90 v -5 h -90"
+       id="path17" />
+    <path
+       style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke-width:4;stroke-dasharray:none"
+       d="m 125,240 v 5 h 90 v -5 z"
+       id="path18" />
+    <path
+       style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke-width:4;stroke-dasharray:none"
+       d="m 275,275 v 5 h 90 v -5 z"
+       id="path19" />
+    <path
+       style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke-width:4;stroke-dasharray:none"
+       d="m 270,140 v 5 h 90 v -5 z"
+       id="path20" />
+  </g>
+</svg>

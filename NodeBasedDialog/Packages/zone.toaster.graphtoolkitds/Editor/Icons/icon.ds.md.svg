@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="512"
+   height="512"
+   viewBox="0 0 512 512"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4.4 (dcaf3e7d9e, 2026-05-05)"
+   sodipodi:docname=".ds.md.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#505050"
+     bordercolor="#eeeeee"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#505050"
+     inkscape:document-units="px"
+     showgrid="true"
+     inkscape:connector-spacing="3"
+     inkscape:zoom="1"
+     inkscape:cx="207.5"
+     inkscape:cy="213.5"
+     inkscape:window-width="1536"
+     inkscape:window-height="836"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1">
+    <inkscape:grid
+       id="grid2"
+       units="px"
+       originx="0"
+       originy="0"
+       spacingx="1"
+       spacingy="1"
+       empcolor="#0099e5"
+       empopacity="0.30196078"
+       color="#0099e5"
+       opacity="0.14901961"
+       empspacing="5"
+       enabled="true"
+       visible="true" />
+  </sodipodi:namedview>
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <rect
+       style="fill:#666666"
+       id="rect1"
+       width="300"
+       height="372"
+       x="104"
+       y="60"
+       ry="46" />
+    <rect
+       style="fill:#ffffff"
+       id="rect2"
+       width="300"
+       height="372"
+       x="100"
+       y="64"
+       ry="46" />
+    <path
+       style="fill:#4c4c4c;fill-opacity:1;fill-rule:nonzero"
+       d="m 130,120 20,-20 20,20 20,-20 20,20 20,-20 20,20 20,-20 20,20 20,-20 20,20 20,-20 20,20 -5,5 -15,-15 -15,15 -5,5 -20,-20 -20,20 -20,-20 -20,20 -20,-20 -20,20 -20,-20 -20,20 -20,-20 -15,15 z"
+       id="path2" />
+    <path
+       style="fill:#4c4c4c;fill-opacity:1;fill-rule:nonzero"
+       d="m 140,150 v 5 h 225 v -5 z"
+       id="path7" />
+    <path
+       style="fill:#4c4c4c;fill-opacity:1;fill-rule:nonzero"
+       d="m 125,170 v 5 h 225 v -5 z"
+       id="path8" />
+    <path
+       style="fill:#4c4c4c;fill-opacity:1;fill-rule:nonzero"
+       d="m 140,190 v 5 h 225 v -5 z"
+       id="path9" />
+    <path
+       style="fill:#4c4c4c;fill-opacity:1;fill-rule:nonzero"
+       d="m 125,210 v 5 h 225 v -5 z"
+       id="path10" />
+    <path
+       style="fill:#4c4c4c;fill-opacity:1;fill-rule:nonzero"
+       d="m 130,250 20,-20 20,20 20,-20 20,20 20,-20 20,20 20,-20 20,20 -5,5 -15,-15 -20,20 -20,-20 -20,20 -20,-20 -20,20 -20,-20 -15,15 z"
+       id="path14"
+       sodipodi:nodetypes="ccccccccccccccccccc" />
+    <path
+       style="fill:#666666;fill-opacity:1;fill-rule:nonzero;stroke-width:4;stroke-dasharray:none"
+       d="m 140,280 v 5 h 115 v -5 z"
+       id="path15" />
+    <path
+       style="fill:#666666;fill-opacity:1;fill-rule:nonzero;stroke-width:4;stroke-dasharray:none"
+       d="m 125,300 v 5 h 115 v -5 z"
+       id="path16" />
+    <path
+       style="fill:#666666;fill-opacity:1;fill-rule:nonzero;stroke-width:4;stroke-dasharray:none"
+       d="m 140,320 v 5 h 115 v -5 z"
+       id="path17" />
+  </g>
+  <g
+     inkscape:groupmode="layer"
+     id="layer2"
+     inkscape:label="Layer 2">
+    <text
+       xml:space="preserve"
+       style="font-size:64.3417px;text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#666666;fill-opacity:1;fill-rule:nonzero;stroke-width:4.02136;stroke-dasharray:none"
+       x="239.78441"
+       y="402.13574"
+       id="text17"
+       transform="scale(1.0053394,0.99468897)"><tspan
+         id="tspan17"
+         x="239.78441"
+         y="402.13574"
+         sodipodi:role="line"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:64.3417px;font-family:'Cascadia Mono';-inkscape-font-specification:'Cascadia Mono Bold';stroke-width:4.02136">.ds.md</tspan></text>
+    <path
+       style="display:inline;fill:#666666;fill-rule:evenodd;stroke:#000000;stroke-width:4;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1"
+       d="m 314,300 26,9"
+       id="path13"
+       inkscape:connector-type="polyline"
+       inkscape:connector-curvature="0" />
+    <path
+       style="display:inline;fill:#666666;fill-rule:evenodd;stroke:#000000;stroke-width:3.7;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1"
+       d="m 314,285 23,-12"
+       id="path12"
+       inkscape:connector-type="polyline"
+       inkscape:connector-curvature="0" />
+    <rect
+       style="fill:#4c4c4c;fill-opacity:1;fill-rule:nonzero"
+       id="rect10"
+       width="45"
+       height="30"
+       x="275"
+       y="280"
+       ry="8.282486" />
+    <rect
+       style="fill:#4c4c4c;fill-opacity:1;fill-rule:nonzero"
+       id="rect11"
+       width="50"
+       height="30"
+       x="330"
+       y="250"
+       ry="8.282486" />
+    <rect
+       style="fill:#4c4c4c;fill-opacity:1;fill-rule:nonzero"
+       id="rect12"
+       width="45"
+       height="30"
+       x="335"
+       y="300"
+       ry="8.282486" />
+  </g>
+</svg>
