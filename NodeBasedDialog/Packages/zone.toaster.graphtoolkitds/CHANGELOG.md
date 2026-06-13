@@ -6,6 +6,7 @@
 - Added prefix-based external function binding for generated command-style dialog functions.
 - Added editor auto-compilation for saved project `.dialoggtk` assets so runtime `*_Runtime.asset` dialog graphs stay in sync with Graph Toolkit edits.
 - Added Project Browser icons for `.ds.md` dialogue scripts and `.dialoggtk` authoring graphs.
+- Added runtime Markdown-style formatting for visible dialogue text rendered through TextMesh Pro.
 
 ## 1.0.0 - 2026-06-04
 

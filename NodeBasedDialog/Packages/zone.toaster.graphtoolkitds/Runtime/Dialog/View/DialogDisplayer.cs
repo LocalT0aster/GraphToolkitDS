@@ -136,9 +136,7 @@ namespace cherrydev
         /// <param name="answerText"></param>
         public void SetUpAnswerDialogPanel(int index, string answerText)
         {
-            _dialogAnswerPanel.GetButtonTextByIndex(index).text = _dialogBehaviour.CurrentAnswerNode != null
-                ? _dialogBehaviour.GetCurrentAnswerTextForDisplayIndex(index)
-                : answerText;
+            _dialogAnswerPanel.GetButtonTextByIndex(index).text = answerText;
         }
 
         private void HandleLanguageChanged()

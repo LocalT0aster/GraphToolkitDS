@@ -29,7 +29,7 @@ namespace cherrydev
         {
             _currentFullText = text;
             _dialogText.text = text;
-            _dialogText.maxVisibleCharacters = text.Length;
+            _dialogText.maxVisibleCharacters = DialogMarkdownFormatter.CountVisibleCharacters(text);
         }
 
         /// <summary>

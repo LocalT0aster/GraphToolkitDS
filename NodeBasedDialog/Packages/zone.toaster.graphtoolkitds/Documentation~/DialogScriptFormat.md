@@ -144,6 +144,38 @@ Empty dialogue lines are skipped:
 >
 ```
 
+### Runtime Text Formatting
+
+Visible dialogue text supports a small Markdown-style formatting layer at runtime.
+This applies to speaker names, dialogue lines, and choice text after localization
+and variable interpolation. The generated `.dialoggtk` and runtime graph assets
+keep the original source text.
+
+Supported spans:
+
+| Markdown | TMP output |
+| --- | --- |
+| `**bold**` | `<b>bold</b>` |
+| `*italic*` | `<i>italic</i>` |
+| `_italic_` | `<i>italic</i>` |
+| `++underlined++` | `<u>underlined</u>` |
+| `~~struck~~` | `<s>struck</s>` |
+| `==marked==` | `<mark=#FFFF0080>marked</mark>` |
+| `` `mono` `` | `<mspace=0.6em>mono</mspace>` |
+| `^sup^` | `<sup>sup</sup>` |
+| `~sub~` | `<sub>sub</sub>` |
+| `\n` | `<br>` |
+
+Rules:
+
+- Raw TextMesh Pro tags such as `<color=red>text</color>` pass through unchanged.
+- Backslash escapes a formatting marker, for example `\*literal\*`.
+- Unmatched markers render literally and do not report diagnostics.
+- Formatting is display-only. It does not affect section ids, conditions, effect
+  payloads, function names, or variable declarations.
+- The runtime typewriter counts visible TMP characters, not formatting tag
+  characters.
+
 ### Section
 
 ```text

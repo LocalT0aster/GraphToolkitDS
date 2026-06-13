@@ -82,6 +82,8 @@ The full deterministic format specification is in `Documentation~/DialogScriptFo
 
 Scripts can declare dialogue variables with `@var`, branch with `@if`/`@else`/`@endif`, jump to sections with `@if condition -> true_section else false_section`, and hide choices with `- [if condition] Answer -> section`. Conditions use a small structured expression grammar, not arbitrary script strings.
 
+Visible dialogue text supports runtime Markdown-style formatting for speaker names, lines, and choices. Common spans such as `**bold**`, `*italic*`, `++underline++`, `~~strike~~`, `==mark==`, `` `mono` ``, `^sup^`, `~sub~`, and `\n` are converted to TextMesh Pro rich-text tags after localization and variable interpolation. Raw TMP tags pass through for advanced formatting.
+
 Legacy `DialogNodeGraph` assets can still be opened with `Window > Dialog Node Based Editor (Legacy)`. Use `Tools > Dialog System > Migrate Legacy Dialog Graphs` to create a migration manifest and empty Graph Toolkit authoring graph.
 
 ## Samples

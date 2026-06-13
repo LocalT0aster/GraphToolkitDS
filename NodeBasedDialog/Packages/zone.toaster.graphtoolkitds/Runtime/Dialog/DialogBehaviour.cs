@@ -23,6 +23,7 @@ namespace cherrydev
         [SerializeField] private bool _isCanSkippingText = true;
         [SerializeField] private bool _autoAdvanceSentenceNodes;
         [SerializeField] private float _autoAdvanceSentenceDelay = 0.65f;
+        [SerializeField] private bool _enableMarkdownFormatting = true;
 
         [Header("Existing Answer Buttons")]
         [SerializeField] private bool _useExistingAnswerButtons = true;
@@ -119,6 +120,10 @@ namespace cherrydev
             ? _presentationConfig.AutoAdvanceSentenceDelay
             : Mathf.Max(0f, _autoAdvanceSentenceDelay);
 
+        public bool EnableMarkdownFormatting => _presentationConfig != null
+            ? _presentationConfig.EnableMarkdownFormatting
+            : _enableMarkdownFormatting;
+
         private void Awake()
         {
             ExternalFunctionsHandler = new DialogExternalFunctionsHandler();
@@ -142,14 +147,8 @@ namespace cherrydev
 
                 if (_currentNode is SentenceNode sentenceNode)
                 {
-                    string updatedText = sentenceNode.GetText();
-                    string updatedCharName = sentenceNode.GetCharacterName();
-
-                    if (_variablesHandler != null)
-                    {
-                        updatedText = DialogTextProcessor.ProcessText(updatedText, _variablesHandler);
-                        updatedCharName = DialogTextProcessor.ProcessText(updatedCharName, _variablesHandler);
-                    }
+                    string updatedText = PrepareVisibleText(sentenceNode.GetText());
+                    string updatedCharName = PrepareVisibleText(sentenceNode.GetCharacterName());
 
                     SentenceNodeActivatedWithParameter?.Invoke(updatedCharName, updatedText,
                         sentenceNode.GetCharacterSprite());
@@ -200,6 +199,8 @@ namespace cherrydev
         public void SetAutoAdvanceSentenceNodes(bool value) => _autoAdvanceSentenceNodes = value;
 
         public void SetAutoAdvanceSentenceDelay(float value) => _autoAdvanceSentenceDelay = Mathf.Max(0f, value);
+
+        public void SetEnableMarkdownFormatting(bool value) => _enableMarkdownFormatting = value;
 
         public void ConfigurePacing(float dialogCharDelay, bool autoAdvanceSentenceNodes, float autoAdvanceSentenceDelay)
         {
@@ -353,7 +354,7 @@ namespace cherrydev
                 return string.Empty;
 
             int answerIndex = ResolveAnswerIndex(displayIndex);
-            return CurrentAnswerNode.GetAnswerText(answerIndex);
+            return GetAnswerTextForDisplay(CurrentAnswerNode, answerIndex);
         }
 
         /// <summary>
@@ -435,23 +436,18 @@ namespace cherrydev
             CurrentSentenceNode = sentenceNode;
             SentenceNodeActivated?.Invoke();
 
-            string charName = sentenceNode.GetCharacterName();
-            string fullText = sentenceNode.GetText();
+            string charName = PrepareVisibleText(sentenceNode.GetCharacterName());
+            string fullText = PrepareVisibleText(sentenceNode.GetText());
             Sprite charSprite = sentenceNode.GetCharacterSprite();
-
-            if (_variablesHandler != null)
-            {
-                charName = DialogTextProcessor.ProcessText(charName, _variablesHandler);
-                fullText = DialogTextProcessor.ProcessText(fullText, _variablesHandler);
-            }
 
             SentenceNodeActivatedWithParameter?.Invoke(charName, fullText, charSprite);
 
             if (!string.IsNullOrEmpty(fullText))
             {
-                int charsToShow = Mathf.CeilToInt(fullText.Length * progress);
-                charsToShow = Mathf.Clamp(charsToShow, 0, fullText.Length);
-                string subText = fullText.Substring(0, charsToShow);
+                int visibleCharacters = DialogMarkdownFormatter.CountVisibleCharacters(fullText);
+                int charsToShow = Mathf.CeilToInt(visibleCharacters * progress);
+                charsToShow = Mathf.Clamp(charsToShow, 0, visibleCharacters);
+                string subText = DialogMarkdownFormatter.TakeVisibleCharacters(fullText, charsToShow);
                 DialogTextSkipped?.Invoke(subText);
             }
         }
@@ -490,14 +486,8 @@ namespace cherrydev
 
             SentenceNodeActivated?.Invoke();
 
-            string localizedCharName = sentenceNode.GetCharacterName();
-            string localizedText = sentenceNode.GetText();
-
-            if (_variablesHandler != null)
-            {
-                localizedCharName = DialogTextProcessor.ProcessText(localizedCharName, _variablesHandler);
-                localizedText = DialogTextProcessor.ProcessText(localizedText, _variablesHandler);
-            }
+            string localizedCharName = PrepareVisibleText(sentenceNode.GetCharacterName());
+            string localizedText = PrepareVisibleText(sentenceNode.GetText());
 
             SentenceNodeActivatedWithParameter?.Invoke(localizedCharName, localizedText,
                 sentenceNode.GetCharacterSprite());
@@ -538,10 +528,7 @@ namespace cherrydev
             for (int displayIndex = 0; displayIndex < _visibleAnswerIndices.Count; displayIndex++)
             {
                 int answerIndex = _visibleAnswerIndices[displayIndex];
-                string answerText = answerNode.GetAnswerText(answerIndex);
-
-                if (_variablesHandler != null)
-                    answerText = DialogTextProcessor.ProcessText(answerText, _variablesHandler);
+                string answerText = GetAnswerTextForDisplay(answerNode, answerIndex);
 
                 AnswerNodeSetUp?.Invoke(displayIndex, answerText);
                 AnswerButtonSetUp?.Invoke(displayIndex, answerNode);
@@ -756,7 +743,9 @@ namespace cherrydev
             _isNextSentenceRequested = false;
             SentenceStarted?.Invoke();
 
-            foreach (char textChar in text)
+            int visibleCharacters = DialogMarkdownFormatter.CountVisibleCharacters(text);
+
+            for (int index = 0; index < visibleCharacters; index++)
             {
                 if (_isCurrentSentenceSkipped)
                 {
@@ -900,9 +889,7 @@ namespace cherrydev
                 if (button == null)
                     continue;
 
-                string answerText = answerNode.GetAnswerText(answerIndex);
-                if (_variablesHandler != null)
-                    answerText = DialogTextProcessor.ProcessText(answerText, _variablesHandler);
+                string answerText = GetAnswerTextForDisplay(answerNode, answerIndex);
 
                 SetAnswerButtonText(button, answerText);
                 SetAnswerButtonColors(button);
@@ -953,6 +940,26 @@ namespace cherrydev
                 return _visibleAnswerIndices[displayIndex];
 
             return displayIndex;
+        }
+
+        private string GetAnswerTextForDisplay(AnswerNode answerNode, int answerIndex)
+        {
+            if (answerNode == null)
+                return string.Empty;
+
+            return PrepareVisibleText(answerNode.GetAnswerText(answerIndex));
+        }
+
+        private string PrepareVisibleText(string text)
+        {
+            string processedText = text ?? string.Empty;
+
+            if (_variablesHandler != null)
+                processedText = DialogTextProcessor.ProcessText(processedText, _variablesHandler);
+
+            return EnableMarkdownFormatting
+                ? DialogMarkdownFormatter.ToTmpRichText(processedText)
+                : processedText;
         }
 
         private void HideExistingAnswerButtons()
